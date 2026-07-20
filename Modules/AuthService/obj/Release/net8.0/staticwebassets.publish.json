@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "4wysbTMmi6jp4ul6aqpT4Nf5PZwr4lnsc7zU3ac8wKg=",
+  "Source": "AuthService",
+  "BasePath": "_content/AuthService",
+  "Mode": "Default",
+  "ManifestType": "Publish",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

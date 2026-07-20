@@ -1,0 +1,67 @@
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/bin/Debug/net8.0/ProctoringService.staticwebassets.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/bin/Debug/net8.0/ProctoringService.deps.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/bin/Debug/net8.0/ProctoringService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/bin/Debug/net8.0/ProctoringService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.csproj.AssemblyReference.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.GeneratedMSBuildEditorConfig.editorconfig
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.AssemblyInfoInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.AssemblyInfo.cs
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.csproj.CoreCompileInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/scopedcss/bundle/ProctoringService.styles.css
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets.build.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets.development.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets.build.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets/msbuild.ProctoringService.Microsoft.AspNetCore.StaticWebAssets.props
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets/msbuild.ProctoringService.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets/msbuild.build.ProctoringService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets/msbuild.buildMultiTargeting.ProctoringService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets/msbuild.buildTransitive.ProctoringService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/staticwebassets.pack.json
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/refint/ProctoringService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ProctoringService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/ProctoringService/obj/Debug/net8.0/ref/ProctoringService.dll
+D:\New folder\examsln\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.staticwebassets.endpoints.json
+D:\New folder\examsln\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.deps.json
+D:\New folder\examsln\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.dll
+D:\New folder\examsln\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.pdb
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.csproj.AssemblyReference.cache
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.AssemblyInfoInputs.cache
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.AssemblyInfo.cs
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\scopedcss\bundle\ProctoringService.styles.css
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.dll
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\refint\ProctoringService.dll
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.pdb
+D:\New folder\examsln\Modules\ProctoringService\obj\Debug\net8.0\ref\ProctoringService.dll
+D:\New folder\examsln\backend\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.staticwebassets.endpoints.json
+D:\New folder\examsln\backend\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.deps.json
+D:\New folder\examsln\backend\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.dll
+D:\New folder\examsln\backend\Modules\ProctoringService\bin\Debug\net8.0\ProctoringService.pdb
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.csproj.AssemblyReference.cache
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.AssemblyInfoInputs.cache
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.AssemblyInfo.cs
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\scopedcss\bundle\ProctoringService.styles.css
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.dll
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\refint\ProctoringService.dll
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ProctoringService.pdb
+D:\New folder\examsln\backend\Modules\ProctoringService\obj\Debug\net8.0\ref\ProctoringService.dll

@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "hrQIHf/UJuNdLsKQzZR7Ev68COnj2ld/+Den8MWmuD8=",
+  "Source": "NotificationService",
+  "BasePath": "_content/NotificationService",
+  "Mode": "Default",
+  "ManifestType": "Publish",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

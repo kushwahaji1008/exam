@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\AuthService\AuthService.csproj" />
+    <ProjectReference Include="..\Modules\ExamService\ExamService.csproj" />
+    <ProjectReference Include="..\Modules\ProctoringService\ProctoringService.csproj" />
+    <ProjectReference Include="..\Modules\NotificationService\NotificationService.csproj" />
+    <ProjectReference Include="..\Modules\ExamAttemptService\ExamAttemptService.csproj" />
+    <ProjectReference Include="..\Modules\ResultService\ResultService.csproj" />
+    <ProjectReference Include="..\Modules\AnalyticsService\AnalyticsService.csproj" />
+    <ProjectReference Include="..\Modules\VideoClassesService\VideoClassesService.csproj" />
+    <ProjectReference Include="..\Modules\QuestionBankService\QuestionBankService.csproj" />
+  </ItemGroup>
+</Project>

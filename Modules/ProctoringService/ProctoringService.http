@@ -1,0 +1,6 @@
+@ProctoringService_HostAddress = http://localhost:5271
+
+GET {{ProctoringService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

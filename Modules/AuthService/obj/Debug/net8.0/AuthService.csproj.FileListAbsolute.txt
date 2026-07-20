@@ -1,0 +1,67 @@
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/bin/Debug/net8.0/AuthService.staticwebassets.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/bin/Debug/net8.0/AuthService.deps.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/bin/Debug/net8.0/AuthService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/bin/Debug/net8.0/AuthService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.csproj.AssemblyReference.cache
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.GeneratedMSBuildEditorConfig.editorconfig
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.AssemblyInfoInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.AssemblyInfo.cs
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.csproj.CoreCompileInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/scopedcss/bundle/AuthService.styles.css
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets.build.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets.development.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets.build.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets/msbuild.AuthService.Microsoft.AspNetCore.StaticWebAssets.props
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets/msbuild.AuthService.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets/msbuild.build.AuthService.props
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets/msbuild.buildMultiTargeting.AuthService.props
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets/msbuild.buildTransitive.AuthService.props
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/staticwebassets.pack.json
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/refint/AuthService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/AuthService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/AuthService/obj/Debug/net8.0/ref/AuthService.dll
+D:\New folder\examsln\Modules\AuthService\bin\Debug\net8.0\AuthService.staticwebassets.endpoints.json
+D:\New folder\examsln\Modules\AuthService\bin\Debug\net8.0\AuthService.deps.json
+D:\New folder\examsln\Modules\AuthService\bin\Debug\net8.0\AuthService.dll
+D:\New folder\examsln\Modules\AuthService\bin\Debug\net8.0\AuthService.pdb
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.csproj.AssemblyReference.cache
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.AssemblyInfoInputs.cache
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.AssemblyInfo.cs
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\scopedcss\bundle\AuthService.styles.css
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.dll
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\refint\AuthService.dll
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\AuthService.pdb
+D:\New folder\examsln\Modules\AuthService\obj\Debug\net8.0\ref\AuthService.dll
+D:\New folder\examsln\backend\Modules\AuthService\bin\Debug\net8.0\AuthService.staticwebassets.endpoints.json
+D:\New folder\examsln\backend\Modules\AuthService\bin\Debug\net8.0\AuthService.deps.json
+D:\New folder\examsln\backend\Modules\AuthService\bin\Debug\net8.0\AuthService.dll
+D:\New folder\examsln\backend\Modules\AuthService\bin\Debug\net8.0\AuthService.pdb
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.csproj.AssemblyReference.cache
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.AssemblyInfoInputs.cache
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.AssemblyInfo.cs
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\scopedcss\bundle\AuthService.styles.css
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.dll
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\refint\AuthService.dll
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\AuthService.pdb
+D:\New folder\examsln\backend\Modules\AuthService\obj\Debug\net8.0\ref\AuthService.dll

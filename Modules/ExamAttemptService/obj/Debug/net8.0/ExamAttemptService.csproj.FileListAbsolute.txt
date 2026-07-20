@@ -1,0 +1,67 @@
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/bin/Debug/net8.0/ExamAttemptService.staticwebassets.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/bin/Debug/net8.0/ExamAttemptService.deps.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/bin/Debug/net8.0/ExamAttemptService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/bin/Debug/net8.0/ExamAttemptService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.csproj.AssemblyReference.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.GeneratedMSBuildEditorConfig.editorconfig
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.AssemblyInfoInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.AssemblyInfo.cs
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.csproj.CoreCompileInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/scopedcss/bundle/ExamAttemptService.styles.css
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets.build.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets.development.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets.build.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets/msbuild.ExamAttemptService.Microsoft.AspNetCore.StaticWebAssets.props
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets/msbuild.ExamAttemptService.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets/msbuild.build.ExamAttemptService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets/msbuild.buildMultiTargeting.ExamAttemptService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets/msbuild.buildTransitive.ExamAttemptService.props
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/staticwebassets.pack.json
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/refint/ExamAttemptService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ExamAttemptService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/ExamAttemptService/obj/Debug/net8.0/ref/ExamAttemptService.dll
+D:\New folder\examsln\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.staticwebassets.endpoints.json
+D:\New folder\examsln\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.deps.json
+D:\New folder\examsln\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.dll
+D:\New folder\examsln\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.pdb
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.csproj.AssemblyReference.cache
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.AssemblyInfoInputs.cache
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.AssemblyInfo.cs
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\scopedcss\bundle\ExamAttemptService.styles.css
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.dll
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\refint\ExamAttemptService.dll
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.pdb
+D:\New folder\examsln\Modules\ExamAttemptService\obj\Debug\net8.0\ref\ExamAttemptService.dll
+D:\New folder\examsln\backend\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.staticwebassets.endpoints.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.deps.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.dll
+D:\New folder\examsln\backend\Modules\ExamAttemptService\bin\Debug\net8.0\ExamAttemptService.pdb
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.csproj.AssemblyReference.cache
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.AssemblyInfoInputs.cache
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.AssemblyInfo.cs
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\scopedcss\bundle\ExamAttemptService.styles.css
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.dll
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\refint\ExamAttemptService.dll
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ExamAttemptService.pdb
+D:\New folder\examsln\backend\Modules\ExamAttemptService\obj\Debug\net8.0\ref\ExamAttemptService.dll

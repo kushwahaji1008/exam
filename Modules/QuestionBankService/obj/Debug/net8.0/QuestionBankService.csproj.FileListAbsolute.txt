@@ -1,0 +1,67 @@
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/bin/Debug/net8.0/QuestionBankService.staticwebassets.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/bin/Debug/net8.0/QuestionBankService.deps.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/bin/Debug/net8.0/QuestionBankService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/bin/Debug/net8.0/QuestionBankService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.csproj.AssemblyReference.cache
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.GeneratedMSBuildEditorConfig.editorconfig
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.AssemblyInfoInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.AssemblyInfo.cs
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.csproj.CoreCompileInputs.cache
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/scopedcss/bundle/QuestionBankService.styles.css
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets.build.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets.development.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets.build.endpoints.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets/msbuild.QuestionBankService.Microsoft.AspNetCore.StaticWebAssets.props
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets/msbuild.QuestionBankService.Microsoft.AspNetCore.StaticWebAssetEndpoints.props
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets/msbuild.build.QuestionBankService.props
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets/msbuild.buildMultiTargeting.QuestionBankService.props
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets/msbuild.buildTransitive.QuestionBankService.props
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/staticwebassets.pack.json
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/refint/QuestionBankService.dll
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/QuestionBankService.pdb
+/data/data/com.termux/files/home/mnsingh/Modules/QuestionBankService/obj/Debug/net8.0/ref/QuestionBankService.dll
+D:\New folder\examsln\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.staticwebassets.endpoints.json
+D:\New folder\examsln\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.deps.json
+D:\New folder\examsln\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.dll
+D:\New folder\examsln\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.pdb
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.csproj.AssemblyReference.cache
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.AssemblyInfoInputs.cache
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.AssemblyInfo.cs
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\scopedcss\bundle\QuestionBankService.styles.css
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.dll
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\refint\QuestionBankService.dll
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.pdb
+D:\New folder\examsln\Modules\QuestionBankService\obj\Debug\net8.0\ref\QuestionBankService.dll
+D:\New folder\examsln\backend\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.staticwebassets.endpoints.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.deps.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.dll
+D:\New folder\examsln\backend\Modules\QuestionBankService\bin\Debug\net8.0\QuestionBankService.pdb
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.csproj.AssemblyReference.cache
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\rpswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.GeneratedMSBuildEditorConfig.editorconfig
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.AssemblyInfoInputs.cache
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.AssemblyInfo.cs
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.csproj.CoreCompileInputs.cache
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\rjimswa.dswa.cache.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\scopedcss\bundle\QuestionBankService.styles.css
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.json.cache
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.development.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.dll
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\refint\QuestionBankService.dll
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\QuestionBankService.pdb
+D:\New folder\examsln\backend\Modules\QuestionBankService\obj\Debug\net8.0\ref\QuestionBankService.dll
