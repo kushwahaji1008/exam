@@ -1,0 +1,33 @@
+**/bin/
+**/obj/
+publish/
+examsolution/appsettings.json
+
+# ----------------------------------
+# .NET / C# Ignore Rules
+# ----------------------------------
+
+# Build and Release Folders (Contains .dll, .pdb, .exe, .cache)
+[Bb]in/
+[Oo]bj/
+
+# Publish output directories
+publish/
+PublishOutputs/
+*.PublishOutputs.*
+
+# IDE and Environment-specific files (Good practice to ignore)
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# (Optional) Ignore local development settings if you don't want them in the repo
+appsettings.Development.json
+
+Architecture.md 
+
+
+Modules/*/obj
+Modules/*/bin

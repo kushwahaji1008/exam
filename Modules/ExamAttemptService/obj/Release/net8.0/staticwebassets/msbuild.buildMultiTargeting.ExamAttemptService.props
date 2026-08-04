@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/ExamAttemptService.props" />
-</Project>

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AuthService.Models;
 using AuthService.Services;
+using System.Security.Claims;
 
 namespace AuthService.Controllers
 {
@@ -18,50 +19,112 @@ namespace AuthService.Controllers
             _logger = logger;
         }
 
+        // ==========================================
+        // 1. REGISTRATION & VERIFICATION
+        // ==========================================
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var (success, message, user) = await _authService.RegisterAsync(request);
+            var (success, message) = await _authService.RegisterAsync(request);
+            if (!success) return BadRequest(new { message });
 
-            if (!success)
-            {
-                return BadRequest(new { message });
-            }
-
-            var userDto = AuthenticationService.ToUserDto(user!);
-            return Ok(new { message, user = userDto });
+            return Ok(new { message });
         }
 
+        [HttpPost("verify-email")] // Can also be mapped to "verify-otp"
+        public async Task<IActionResult> VerifyEmail([FromBody] VerifyOtpRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var (success, message, token, refreshToken, userDto) = await _authService.VerifyOtpAsync(request);
+            if (!success) return BadRequest(new { message });
+
+            return Ok(new LoginResponse { Token = token, RefreshToken = refreshToken, User = userDto! });
+        }
+
+        [HttpPost("resend-otp")]
+        public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request)
+        {
+            var (success, message) = await _authService.ResendOtpAsync(request.Email, isPasswordReset: false);
+            if (!success) return BadRequest(new { message });
+            return Ok(new { message });
+        }
+
+        // ==========================================
+        // 2. LOGIN & LOGOUT
+        // ==========================================
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var (success, message, token, user) = await _authService.LoginAsync(request);
+            var (success, message, token, refreshToken, userDto) = await _authService.LoginAsync(request);
+            if (!success) return Unauthorized(new { message });
 
-            if (!success)
-            {
-                return Unauthorized(new { message });
-            }
-
-            var userDto = AuthenticationService.ToUserDto(user!);
-            return Ok(new LoginResponse { Token = token, User = userDto });
+            return Ok(new LoginResponse { Token = token, RefreshToken = refreshToken, User = userDto! });
         }
 
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout()
+        {
+            var userId = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            await _authService.LogoutAsync(userId);
+            return Ok(new { message = "Logged out successfully" });
+        }
+
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            var (success, message, token, refreshToken, user) = await _authService.RefreshTokenAsync(request);
+            if (!success) return Unauthorized(new { message });
+            
+            return Ok(new LoginResponse { Token = token, RefreshToken = refreshToken, User = user! });
+        }
+
+        // ==========================================
+        // 3. PASSWORD MANAGEMENT
+        // ==========================================
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ResendOtpRequest request)
+        {
+            var (success, message) = await _authService.ResendOtpAsync(request.Email, isPasswordReset: true);
+            if (!success) return BadRequest(new { message });
+            return Ok(new { message });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var (success, message) = await _authService.ResetPasswordAsync(request);
+            if (!success) return BadRequest(new { message });
+            return Ok(new { message });
+        }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+        {
+            var userId = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var (success, message) = await _authService.ChangePasswordAsync(userId, request);
+            if (!success) return BadRequest(new { message });
+            return Ok(new { message });
+        }
+
+        // ==========================================
+        // 4. USER PROFILE MANAGEMENT
+        // ==========================================
         [HttpGet("users")]
         [Authorize(Roles = "Admin,SuperAdmin")]
         public async Task<IActionResult> GetAllUsers()
         {
-            var users = await _authService.GetAllUsersAsync();
-            var userDtos = users.Select(AuthenticationService.ToUserDto).ToList();
+            var userDtos = await _authService.GetAllUsersAsync();
             return Ok(userDtos);
         }
 
@@ -69,13 +132,8 @@ namespace AuthService.Controllers
         [Authorize]
         public async Task<IActionResult> GetUserById(string userId)
         {
-            var user = await _authService.GetUserByIdAsync(userId);
-            if (user == null)
-            {
-                return NotFound(new { message = "User not found" });
-            }
-
-            var userDto = AuthenticationService.ToUserDto(user);
+            var userDto = await _authService.GetUserByIdAsync(userId);
+            if (userDto == null) return NotFound(new { message = "User not found" });
             return Ok(userDto);
         }
 
@@ -83,42 +141,32 @@ namespace AuthService.Controllers
         [Authorize]
         public async Task<IActionResult> GetCurrentUser()
         {
-            var userId = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userId))
-            {
-                return Unauthorized(new { message = "Invalid token" });
-            }
+            var userId = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized(new { message = "Invalid token" });
 
-            var user = await _authService.GetUserByIdAsync(userId);
-            if (user == null)
-            {
-                return NotFound(new { message = "User not found" });
-            }
+            var userDto = await _authService.GetUserByIdAsync(userId);
+            if (userDto == null) return NotFound(new { message = "User not found" });
 
-            var userDto = AuthenticationService.ToUserDto(user);
             return Ok(userDto);
         }
 
         [HttpPut("users/{userId}")]
         [Authorize]
-        public async Task<IActionResult> UpdateUser(string userId, [FromBody] User updatedUser)
+        public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateProfileRequest request)
         {
-            var currentUserId = User.FindFirst("userId")?.Value;
-            var currentUserRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+            var currentUserId = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUserRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            // Users can only update their own profile unless they are admin
             if (currentUserId != userId && currentUserRole != "Admin" && currentUserRole != "SuperAdmin")
             {
                 return Forbid();
             }
 
-            var success = await _authService.UpdateUserAsync(userId, updatedUser);
-            if (!success)
-            {
-                return NotFound(new { message = "User not found or update failed" });
-            }
+            // Using the secure partial update method!
+            var success = await _authService.UpdateUserProfileAsync(userId, request);
+            if (!success) return NotFound(new { message = "User not found or no changes were made" });
 
-            return Ok(new { message = "User updated successfully" });
+            return Ok(new { message = "Profile updated successfully" });
         }
 
         [HttpDelete("users/{userId}")]
@@ -126,10 +174,7 @@ namespace AuthService.Controllers
         public async Task<IActionResult> DeleteUser(string userId)
         {
             var success = await _authService.DeleteUserAsync(userId);
-            if (!success)
-            {
-                return NotFound(new { message = "User not found" });
-            }
+            if (!success) return NotFound(new { message = "User not found" });
 
             return Ok(new { message = "User deleted successfully" });
         }

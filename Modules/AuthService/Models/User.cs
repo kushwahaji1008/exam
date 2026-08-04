@@ -14,6 +14,8 @@ namespace AuthService.Models
         [EmailAddress]
         public string Email { get; set; } = string.Empty;
 
+        public string UserName { get; set; } = string.Empty;
+
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
 
@@ -31,9 +33,35 @@ namespace AuthService.Models
 
         public bool IsActive { get; set; } = true;
 
+        public bool IsEmailVerified { get; set; } = false;
+
+        public bool IsPhoneVerified { get; set; } = false;
+
+        public bool IsDeleted { get; set; } = false;
+        
+        public string Gender { get; set; } = string.Empty;
+
+        public DateTime? DateOfBirth { get; set;} 
+
         public string? ProfilePicture { get; set; }
 
         public List<string> Permissions { get; set; } = new();
+
+        // Learning 
+        
+
+        // Gamification 
+        public int TotalPoints { get; set; } = 0;
+        public int CurrentStreak { get; set; } = 0;
+        public UserBadge Badge { get; set; } = UserBadge.Bronze;
+
+        // OTP Fields for Email Verification
+        public string? Otp { get; set; }
+        public DateTime? OtpExpiry { get; set; }
+
+        // Refresh Token Fields
+        public string? RefreshToken { get; set; }
+        public DateTime? RefreshTokenExpiry { get; set; }
     }
 
     public enum UserRole
@@ -42,6 +70,16 @@ namespace AuthService.Models
         Teacher,
         Admin,
         SuperAdmin
+    }
+
+    public enum UserBadge
+    {
+        Bronze,
+        Silver,
+        Gold,
+        Diamond,
+        Heroic,
+        GrandMaster
     }
 
     public class RegisterRequest
@@ -72,9 +110,11 @@ namespace AuthService.Models
         public string Password { get; set; } = string.Empty;
     }
 
+    // Update LoginResponse to include RefreshToken
     public class LoginResponse
     {
         public string Token { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
         public UserDto User { get; set; } = null!;
     }
 
@@ -89,4 +129,46 @@ namespace AuthService.Models
         public DateTime? LastLoginAt { get; set; }
         public string? ProfilePicture { get; set; }
     }
+
+    public class VerifyOtpRequest
+    {
+        public string Email { get; set; }
+        public string Otp { get; set; }
+    }
+
+    public class UpdateProfileRequest
+    {
+        [Required]
+        public string FullName { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public DateTime? DateOfBirth { get; set; }
+        public string? ProfilePicture { get; set; }
+    }
+
+    public class ResendOtpRequest
+    {
+        [Required, EmailAddress] public string Email { get; set; } = string.Empty;
+    }
+
+    public class ResetPasswordRequest
+    {
+        [Required, EmailAddress] public string Email { get; set; } = string.Empty;
+        [Required] public string Otp { get; set; } = string.Empty;
+        [Required, MinLength(6)] public string NewPassword { get; set; } = string.Empty;
+    }
+
+    public class ChangePasswordRequest
+    {
+        [Required] public string OldPassword { get; set; } = string.Empty;
+        [Required, MinLength(6)] public string NewPassword { get; set; } = string.Empty;
+    }
+
+    public class RefreshTokenRequest
+    {
+        [Required] public string Token { get; set; } = string.Empty; // Expired JWT
+        [Required] public string RefreshToken { get; set; } = string.Empty;
+    }
+
+    
 }

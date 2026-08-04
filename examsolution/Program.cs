@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;          
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;                                            
+using Microsoft.OpenApi.Models;
+using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);             
-
+var builder = WebApplication.CreateBuilder(args);
 
 // ==========================================
 // CORS CONFIGURATION (ALLOW ANYWHERE)
@@ -23,7 +23,7 @@ var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? "YourSuperSecretKeyForJWTTokenGeneration12345678901234567890");
 
 builder.Services.AddAuthentication(options =>
-{                                                                 
+{
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
@@ -46,7 +46,35 @@ builder.Services.AddAuthentication(options =>
 // ==========================================
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Added JWT Bearer support to Swagger UI
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter your JWT token directly below (no 'Bearer' prefix needed)."
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
 builder.Services.AddSignalR();
 builder.Services.AddRazorPages();
 builder.Services.AddHttpClient();
@@ -54,6 +82,9 @@ builder.Services.AddHttpClient();
 // ==========================================
 // 3. REGISTER ALL MICROSERVICES DEPENDENCIES
 // ==========================================
+
+// --- THE FIX: Map the Interface to the Implementation ---
+builder.Services.AddTransient<AuthService.Services.IEmailService, AuthService.Services.EmailService>();
 
 // --- AuthService ---
 builder.Services.AddScoped<AuthService.Services.MongoDbService>();
@@ -92,16 +123,14 @@ builder.Services.AddScoped<VideoClassesService.Services.ProgressTrackingService>
 builder.Services.AddScoped<VideoClassesService.Services.CommentService>();
 builder.Services.AddScoped<VideoClassesService.Services.CourseManagementService>();
 
-// --- AnalyticsService (Add custom service registrations here if required) ---
-
 var app = builder.Build();
 
 app.Use(async (context, next) =>
-		{
-		    Console.WriteLine($"[API HIT] {DateTime.Now:HH:mm:ss} {context.Request.Method} {context.Request.Path}");
-		        await next();
-			    Console.WriteLine($"[API DONE] Status: {context.Response.StatusCode}");
-			    });	
+{
+    Console.WriteLine($"[API HIT] {DateTime.Now:HH:mm:ss} {context.Request.Method} {context.Request.Path}");
+    await next();
+    Console.WriteLine($"[API DONE] Status: {context.Response.StatusCode}");
+}); 
 
 // ==========================================
 // 4. HTTP REQUEST PIPELINE (MIDDLEWARES)
@@ -111,8 +140,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-//app.UseHttpsRedirection();
 
 // Enable CORS middleware before Authentication and Authorization
 app.UseCors("AllowFrontend");
@@ -131,4 +158,3 @@ app.MapHub<NotificationService.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<VideoClassesService.Hubs.LiveClassHub>("/hubs/liveclass");
 
 app.Run();
-
