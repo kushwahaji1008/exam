@@ -121,7 +121,7 @@ namespace AuthService.Controllers
         // 4. USER PROFILE MANAGEMENT
         // ==========================================
         [HttpGet("users")]
-        [Authorize(Roles = "Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,Admin,SuperAdmin")]
         public async Task<IActionResult> GetAllUsers()
         {
             var userDtos = await _authService.GetAllUsersAsync();
@@ -157,7 +157,7 @@ namespace AuthService.Controllers
             var currentUserId = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var currentUserRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (currentUserId != userId && currentUserRole != "Admin" && currentUserRole != "SuperAdmin")
+            if (currentUserId != userId && currentUserRole != "1" && currentUserRole != "2"&& currentUserRole != "Admin" && currentUserRole != "SuperAdmin")
             {
                 return Forbid();
             }
@@ -170,7 +170,7 @@ namespace AuthService.Controllers
         }
 
         [HttpDelete("users/{userId}")]
-        [Authorize(Roles = "Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteUser(string userId)
         {
             var success = await _authService.DeleteUserAsync(userId);

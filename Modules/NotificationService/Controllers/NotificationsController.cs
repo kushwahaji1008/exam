@@ -29,7 +29,7 @@ namespace NotificationService.Controllers
         }
 
         [HttpPost("bulk")]
-        [Authorize(Roles = "Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,Admin,SuperAdmin")]
         public async Task<IActionResult> SendBulkNotification([FromBody] SendNotificationRequest request)
         {
             var result = await _notificationService.SendBulkNotificationAsync(request);

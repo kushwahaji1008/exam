@@ -10,6 +10,8 @@ namespace ExamService.Models
         [BsonRepresentation(BsonType.String)]
         public string Id { get; set; } = Guid.NewGuid().ToString();
 
+        public string CourseId { get; set; } = string.Empty;
+
         [Required]
         public string Title { get; set; } = string.Empty;
 
@@ -49,7 +51,7 @@ namespace ExamService.Models
     public class ExamSettings
     {
         public bool RandomizeQuestions { get; set; } = false;
-        public bool AllowReview { get; set; } = true;
+        public bool AllowReview { get; set; } = false;
         public bool ShowResultsImmediately { get; set; } = false;
         public bool EnableNegativeMarking { get; set; } = false;
         public double NegativeMarkingPercentage { get; set; } = 0.25; // 25% deduction
@@ -78,6 +80,7 @@ namespace ExamService.Models
 
     public class CreateExamRequest
     {
+        public string CourseId { get; set; } = string.Empty;
         [Required]
         public string Title { get; set; } = string.Empty;
 
@@ -105,6 +108,7 @@ namespace ExamService.Models
 
     public class ExamDto
     {
+        public string CourseId { get; set; } = string.Empty;
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;

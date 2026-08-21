@@ -21,7 +21,7 @@ namespace ProctoringService.Controllers
         }
 
         [HttpPost("start")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> StartProctoring([FromBody] StartProctoringRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -69,7 +69,7 @@ namespace ProctoringService.Controllers
         }
 
         [HttpGet("exam/{examId}/sessions")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetExamSessions(string examId)
         {
             var sessions = await _proctoringService.GetSessionsByExamAsync(examId);
@@ -77,7 +77,7 @@ namespace ProctoringService.Controllers
         }
 
         [HttpPost("violation")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> ReportViolation([FromBody] ReportViolationRequest request)
         {
             var violation = new Violation
@@ -105,7 +105,7 @@ namespace ProctoringService.Controllers
         }
 
         [HttpPost("snapshot")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> SubmitSnapshot([FromBody] SubmitSnapshotRequest request)
         {
             var snapshot = new Snapshot

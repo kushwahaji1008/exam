@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Modules\AuthService\AuthService.csproj" />
     <ProjectReference Include="..\Modules\ExamService\ExamService.csproj" />
+    <ProjectReference Include="..\Modules\CourseService\CourseService.csproj" />
     <ProjectReference Include="..\Modules\ProctoringService\ProctoringService.csproj" />
     <ProjectReference Include="..\Modules\NotificationService\NotificationService.csproj" />
     <ProjectReference Include="..\Modules\ExamAttemptService\ExamAttemptService.csproj" />

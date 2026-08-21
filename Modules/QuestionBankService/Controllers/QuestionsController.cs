@@ -19,7 +19,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateQuestion([FromBody] CreateQuestionRequest request)
         {
             if (!ModelState.IsValid)
@@ -34,7 +34,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpGet]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetAllQuestions([FromQuery] string? category, [FromQuery] DifficultyLevel? difficulty)
         {
             var questions = await _questionService.GetAllQuestionsAsync(category, difficulty);
@@ -44,7 +44,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpGet("{questionId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionById(string questionId)
         {
             var question = await _questionService.GetQuestionByIdAsync(questionId);
@@ -57,7 +57,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpPost("bulk")]
-        [Authorize]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionsByIds([FromBody] List<string> questionIds)
         {
             var questions = await _questionService.GetQuestionsByIdsAsync(questionIds);
@@ -76,7 +76,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpPut("{questionId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UpdateQuestion(string questionId, [FromBody] Question updatedQuestion)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -106,7 +106,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpDelete("{questionId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteQuestion(string questionId)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -134,7 +134,7 @@ namespace QuestionBankService.Controllers
         }
 
         [HttpGet("categories")]
-        [Authorize]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetCategories()
         {
             var categories = await _questionService.GetCategoriesAsync();

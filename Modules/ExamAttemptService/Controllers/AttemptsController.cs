@@ -19,7 +19,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPost("start")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> StartExam([FromBody] StartExamRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -53,7 +53,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpGet("exam/{examId}/active")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> GetActiveAttempt(string examId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -68,7 +68,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpGet("student/my-attempts")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> GetMyAttempts()
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -79,7 +79,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpGet("exam/{examId}/all")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetExamAttempts(string examId)
         {
             var attempts = await _attemptService.GetExamAttemptsAsync(examId);
@@ -89,7 +89,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPost("{attemptId}/answer")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> SaveAnswer(string attemptId, [FromBody] SubmitAnswerRequest request)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -130,7 +130,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPost("{attemptId}/flag/{questionId}")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> ToggleFlag(string attemptId, string questionId, [FromQuery] bool flagged = true)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -156,7 +156,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPost("{attemptId}/log")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> LogActivity(string attemptId, [FromBody] ActivityLogRequest request)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -182,7 +182,7 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPost("submit")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> SubmitExam([FromBody] SubmitExamRequest request)
         {
             var userId = User.FindFirst("userId")?.Value;

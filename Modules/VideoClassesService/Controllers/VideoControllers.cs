@@ -24,7 +24,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateCourse([FromBody] Course course)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -70,7 +70,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpDelete("{courseId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteCourse(string courseId)
         {
             var success = await _courseService.DeleteCourseAsync(courseId);
@@ -83,7 +83,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{courseId}/publish")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PublishCourse(string courseId)
         {
             var success = await _courseService.PublishCourseAsync(courseId);
@@ -96,7 +96,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{courseId}/enroll")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> EnrollCourse(string courseId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -113,7 +113,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{courseId}/chapters")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateChapter(string courseId, [FromBody] Chapter chapter)
         {
             chapter.CourseId = courseId;
@@ -154,7 +154,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateLesson([FromBody] Lesson lesson)
         {
             var created = await _courseService.CreateLessonAsync(lesson);
@@ -177,7 +177,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{lessonId}/progress")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> UpdateProgress(string lessonId, [FromBody] ProgressUpdate update)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -199,7 +199,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{lessonId}/notes")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> AddNote(string lessonId, [FromBody] AddNoteRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -221,7 +221,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{lessonId}/bookmarks")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> AddBookmark(string lessonId, [FromBody] AddBookmarkRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -243,7 +243,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{lessonId}/comments")]
-        [Authorize]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> AddComment(string lessonId, [FromBody] AddCommentRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -276,7 +276,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpGet("my-courses")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> GetMyCourses()
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
@@ -300,7 +300,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("course/{courseId}/rate")]
-        [Authorize(Roles = "Student")]
+        [Authorize(Roles = "0,Student")]
         public async Task<IActionResult> RateCourse(string courseId, [FromBody] RateCourseRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;

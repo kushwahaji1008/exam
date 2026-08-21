@@ -19,7 +19,7 @@ namespace ExamService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateExam([FromBody] CreateExamRequest request)
         {
             if (!ModelState.IsValid)
@@ -60,7 +60,7 @@ namespace ExamService.Controllers
         }
 
         [HttpPut("{examId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UpdateExam(string examId, [FromBody] Exam updatedExam)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -90,7 +90,7 @@ namespace ExamService.Controllers
         }
 
         [HttpDelete("{examId}")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteExam(string examId)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -118,7 +118,7 @@ namespace ExamService.Controllers
         }
 
         [HttpPost("{examId}/schedule")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ScheduleExam(string examId, [FromBody] ScheduleRequest request)
         {
             var success = await _examService.ScheduleExamAsync(examId, request.StartTime);
@@ -131,7 +131,7 @@ namespace ExamService.Controllers
         }
 
         [HttpPost("{examId}/activate")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ActivateExam(string examId)
         {
             var success = await _examService.ActivateExamAsync(examId);
@@ -144,7 +144,7 @@ namespace ExamService.Controllers
         }
 
         [HttpPost("{examId}/complete")]
-        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CompleteExam(string examId)
         {
             var success = await _examService.CompleteExamAsync(examId);

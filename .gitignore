@@ -31,3 +31,55 @@ Architecture.md
 
 Modules/*/obj
 Modules/*/bin
+
+
+## 1. BUILD RESULTS - Sabse important
+**/bin/
+**/obj/
+**/out/
+**/TestResults/
+**/Publish/
+[Dd]ebug/
+[Rr]elease/
+*.dll
+*.exe
+*.pdb
+*.cache
+
+## 2. VISUAL STUDIO / RIDER / VSCODE
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+.vscode/
+
+## 3. NUGET PACKAGES
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+
+## 4. SECRETS & ENVIRONMENT - BAHUT ZAROORI
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Local.json
+appsettings.*.json
+.env
+*.pfx
+*.pem
+secrets.json
+*.db
+*.sqlite
+
+## 5. LOGS & OS FILES
+*.log
+logs/
+.DS_Store
+Thumbs.db
+
+## 6. OTHER.NET STUFF
+*.user
+*.suo
+*.sln.docstates
+*.zip
