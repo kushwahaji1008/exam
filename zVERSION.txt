@@ -1,0 +1,596 @@
+Yes — that's actually the better strategy.
+
+We should not put every feature into V1. V1 should be the stable production contract containing the core capabilities. V2 can introduce more advanced functionality and breaking API changes.
+
+The key is: don't use V2 merely because V1 has too many endpoints. Versioning should represent a change in the API contract/behavior.
+
+Recommended split for your platform
+
+I'd structure the roadmap like this:
+
+/api/v1/...
+    Stable core platform
+    Production-critical functionality
+    Basic enterprise security
+
+/api/v2/...
+    Advanced functionality
+    New workflows
+    Improved representations
+    Features requiring breaking changes
+
+AuthService
+V1 — core identity
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/logout
+POST   /api/v1/auth/refresh-token
+POST   /api/v1/auth/verify-email
+POST   /api/v1/auth/resend-otp
+
+POST   /api/v1/auth/forgot-password
+POST   /api/v1/auth/reset-password
+POST   /api/v1/auth/change-password
+
+GET    /api/v1/auth/me
+PUT    /api/v1/auth/me
+
+GET    /api/v1/auth/sessions
+DELETE /api/v1/auth/sessions/{sessionId}
+POST   /api/v1/auth/sessions/revoke-all
+
+GET    /api/v1/users
+GET    /api/v1/users/{userId}
+PUT    /api/v1/users/{userId}
+DELETE /api/v1/users/{userId}
+
+POST   /api/v1/users/{userId}/activate
+POST   /api/v1/users/{userId}/deactivate
+POST   /api/v1/users/{userId}/lock
+POST   /api/v1/users/{userId}/unlock
+
+GET    /api/v1/roles
+POST   /api/v1/roles
+PUT    /api/v1/roles/{roleId}
+DELETE /api/v1/roles/{roleId}
+
+GET    /api/v1/permissions
+
+
+I'd also put basic MFA in V1 if this is genuinely enterprise-focused:
+
+GET    /api/v1/auth/mfa/status
+POST   /api/v1/auth/mfa/setup
+POST   /api/v1/auth/mfa/verify
+POST   /api/v1/auth/mfa/enable
+POST   /api/v1/auth/mfa/disable
+
+V2 — advanced identity
+POST   /api/v2/auth/passkeys/register
+POST   /api/v2/auth/passkeys/authenticate
+
+POST   /api/v2/auth/mfa/recovery-codes/regenerate
+
+GET    /api/v2/auth/devices
+GET    /api/v2/auth/risk
+GET    /api/v2/auth/security-events
+
+GET    /api/v2/users/{userId}/activity
+GET    /api/v2/users/{userId}/sessions
+
+POST   /api/v2/service-accounts
+POST   /api/v2/service-accounts/{id}/rotate-secret
+
+
+Later you could introduce SSO/OIDC/SAML depending on your business requirements.
+
+ExamService
+V1
+
+Core exam management:
+
+GET    /api/v1/exams
+POST   /api/v1/exams
+GET    /api/v1/exams/{examId}
+PUT    /api/v1/exams/{examId}
+DELETE /api/v1/exams/{examId}
+
+POST   /api/v1/exams/{examId}/publish
+POST   /api/v1/exams/{examId}/unpublish
+
+GET    /api/v1/exams/{examId}/settings
+PUT    /api/v1/exams/{examId}/settings
+
+GET    /api/v1/exams/{examId}/sections
+POST   /api/v1/exams/{examId}/sections
+PUT    /api/v1/exams/{examId}/sections/{sectionId}
+DELETE /api/v1/exams/{examId}/sections/{sectionId}
+
+GET    /api/v1/exams/{examId}/questions
+POST   /api/v1/exams/{examId}/questions
+DELETE /api/v1/exams/{examId}/questions/{questionId}
+
+GET    /api/v1/exams/{examId}/candidates
+POST   /api/v1/exams/{examId}/candidates
+DELETE /api/v1/exams/{examId}/candidates/{userId}
+
+V2
+
+Advanced exam management:
+
+GET    /api/v2/exams/{examId}/versions
+POST   /api/v2/exams/{examId}/versions
+
+POST   /api/v2/exams/{examId}/clone
+POST   /api/v2/exams/{examId}/duplicate
+
+POST   /api/v2/exams/{examId}/questions/randomize
+POST   /api/v2/exams/{examId}/questions/adaptive
+
+GET    /api/v2/exams/{examId}/question-analysis
+GET    /api/v2/exams/{examId}/performance
+
+POST   /api/v2/exams/bulk-import
+POST   /api/v2/exams/bulk-export
+
+ExamAttemptService
+V1
+
+The core examination engine:
+
+POST   /api/v1/attempts
+GET    /api/v1/attempts/{attemptId}
+
+POST   /api/v1/attempts/{attemptId}/start
+POST   /api/v1/attempts/{attemptId}/pause
+POST   /api/v1/attempts/{attemptId}/resume
+POST   /api/v1/attempts/{attemptId}/submit
+
+GET    /api/v1/attempts/{attemptId}/questions
+GET    /api/v1/attempts/{attemptId}/questions/{questionId}
+
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/answer
+PUT    /api/v1/attempts/{attemptId}/questions/{questionId}/answer
+
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/mark-review
+
+GET    /api/v1/attempts/{attemptId}/timer
+POST   /api/v1/attempts/{attemptId}/timer/sync
+
+POST   /api/v1/attempts/{attemptId}/sync
+POST   /api/v1/attempts/{attemptId}/recover
+
+V2
+
+Advanced attempt capabilities:
+
+POST   /api/v2/attempts/{attemptId}/terminate
+POST   /api/v2/attempts/{attemptId}/force-submit
+POST   /api/v2/attempts/{attemptId}/extend-time
+
+GET    /api/v2/attempts/{attemptId}/events
+GET    /api/v2/attempts/{attemptId}/navigation
+
+POST   /api/v2/attempts/{attemptId}/adaptive-next
+
+QuestionBankService
+V1
+GET    /api/v1/questions
+POST   /api/v1/questions
+GET    /api/v1/questions/{questionId}
+PUT    /api/v1/questions/{questionId}
+DELETE /api/v1/questions/{questionId}
+
+POST   /api/v1/questions/{questionId}/publish
+POST   /api/v1/questions/{questionId}/archive
+
+GET    /api/v1/questions/{questionId}/options
+POST   /api/v1/questions/{questionId}/options
+PUT    /api/v1/questions/{questionId}/options/{optionId}
+DELETE /api/v1/questions/{questionId}/options/{optionId}
+
+GET    /api/v1/question-categories
+POST   /api/v1/question-categories
+
+GET    /api/v1/subjects
+POST   /api/v1/subjects
+
+GET    /api/v1/topics
+POST   /api/v1/topics
+
+GET    /api/v1/tags
+POST   /api/v1/tags
+
+V2
+GET    /api/v2/questions/{questionId}/versions
+POST   /api/v2/questions/{questionId}/versions
+
+POST   /api/v2/questions/import
+POST   /api/v2/questions/export
+
+POST   /api/v2/questions/bulk-publish
+POST   /api/v2/questions/bulk-archive
+
+POST   /api/v2/questions/{questionId}/submit-review
+POST   /api/v2/questions/{questionId}/approve
+POST   /api/v2/questions/{questionId}/reject
+
+GET    /api/v2/questions/review-queue
+
+ResultService
+V1
+GET    /api/v1/results/{resultId}
+GET    /api/v1/users/{userId}/results
+GET    /api/v1/exams/{examId}/results
+GET    /api/v1/attempts/{attemptId}/result
+
+POST   /api/v1/results/{resultId}/calculate
+POST   /api/v1/results/{resultId}/finalize
+POST   /api/v1/results/{resultId}/publish
+
+GET    /api/v1/results/{resultId}/report
+GET    /api/v1/results/{resultId}/breakdown
+
+GET    /api/v1/certificates/{certificateId}
+POST   /api/v1/certificates/generate
+GET    /api/v1/certificates/{certificateId}/verify
+
+V2
+POST   /api/v2/results/{resultId}/recalculate
+POST   /api/v2/results/{resultId}/unfinalize
+
+POST   /api/v2/results/{resultId}/questions/{questionId}/override
+
+GET    /api/v2/exams/{examId}/ranking
+GET    /api/v2/exams/{examId}/leaderboard
+
+POST   /api/v2/results/export
+POST   /api/v2/results/export/excel
+POST   /api/v2/results/export/pdf
+
+AnalyticsService
+
+I would keep V1 relatively simple.
+
+V1
+GET /api/v1/analytics/dashboard
+GET /api/v1/analytics/users/{userId}
+GET /api/v1/analytics/users/{userId}/performance
+GET /api/v1/analytics/users/{userId}/progress
+
+GET /api/v1/analytics/exams/{examId}
+GET /api/v1/analytics/exams/{examId}/performance
+GET /api/v1/analytics/exams/{examId}/completion
+
+GET /api/v1/analytics/questions/{questionId}
+GET /api/v1/analytics/platform
+
+V2
+GET /api/v2/analytics/users/{userId}/strengths
+GET /api/v2/analytics/users/{userId}/weaknesses
+GET /api/v2/analytics/users/{userId}/accuracy
+GET /api/v2/analytics/users/{userId}/time-spent
+
+GET /api/v2/analytics/exams/{examId}/dropout
+GET /api/v2/analytics/exams/{examId}/timing
+GET /api/v2/analytics/exams/{examId}/difficulty
+GET /api/v2/analytics/exams/{examId}/distribution
+
+GET /api/v2/analytics/questions/{questionId}/discrimination
+
+POST /api/v2/analytics/reports
+GET  /api/v2/analytics/reports
+GET  /api/v2/analytics/reports/{reportId}
+POST /api/v2/analytics/reports/{reportId}/generate
+
+NotificationService
+V1
+GET    /api/v1/notifications
+GET    /api/v1/notifications/{notificationId}
+
+POST   /api/v1/notifications/{notificationId}/read
+POST   /api/v1/notifications/read-all
+
+POST   /api/v1/notifications/send
+POST   /api/v1/notifications/email
+POST   /api/v1/notifications/sms
+POST   /api/v1/notifications/push
+
+GET    /api/v1/notification-preferences
+PUT    /api/v1/notification-preferences
+
+GET    /api/v1/notification-templates
+POST   /api/v1/notification-templates
+PUT    /api/v1/notification-templates/{templateId}
+
+V2
+POST   /api/v2/notifications/send-bulk
+POST   /api/v2/notifications/schedule
+POST   /api/v2/notifications/{notificationId}/cancel
+
+POST   /api/v2/notification-templates/{templateId}/preview
+
+GET    /api/v2/notifications/{notificationId}/delivery
+GET    /api/v2/notifications/delivery-failures
+POST   /api/v2/notifications/{notificationId}/retry
+
+ProctoringService
+V1
+
+Core proctoring:
+
+POST   /api/v1/proctoring/sessions
+GET    /api/v1/proctoring/sessions/{sessionId}
+
+POST   /api/v1/proctoring/sessions/{sessionId}/start
+POST   /api/v1/proctoring/sessions/{sessionId}/end
+
+POST   /api/v1/proctoring/sessions/{sessionId}/identity/verify
+POST   /api/v1/proctoring/sessions/{sessionId}/environment-check
+POST   /api/v1/proctoring/sessions/{sessionId}/device-check
+
+POST   /api/v1/proctoring/sessions/{sessionId}/events
+GET    /api/v1/proctoring/sessions/{sessionId}/events
+
+GET    /api/v1/proctoring/sessions/{sessionId}/evidence
+POST   /api/v1/proctoring/sessions/{sessionId}/evidence
+
+V2
+
+Advanced proctoring:
+
+GET    /api/v2/proctoring/live/sessions
+GET    /api/v2/proctoring/live/sessions/{sessionId}
+
+POST   /api/v2/proctoring/sessions/{sessionId}/flag
+POST   /api/v2/proctoring/sessions/{sessionId}/clear-flag
+
+GET    /api/v2/proctoring/reviews
+GET    /api/v2/proctoring/reviews/{reviewId}
+
+POST   /api/v2/proctoring/reviews/{reviewId}/approve
+POST   /api/v2/proctoring/reviews/{reviewId}/reject
+POST   /api/v2/proctoring/reviews/{reviewId}/escalate
+
+GET    /api/v2/proctoring/policies
+POST   /api/v2/proctoring/policies
+PUT    /api/v2/proctoring/policies/{policyId}
+
+VideoClassesService
+V1
+GET    /api/v1/classes
+POST   /api/v1/classes
+GET    /api/v1/classes/{classId}
+PUT    /api/v1/classes/{classId}
+DELETE /api/v1/classes/{classId}
+
+POST   /api/v1/classes/{classId}/publish
+POST   /api/v1/classes/{classId}/archive
+
+GET    /api/v1/classes/{classId}/sessions
+POST   /api/v1/classes/{classId}/sessions
+GET    /api/v1/classes/{classId}/sessions/{sessionId}
+
+POST   /api/v1/classes/{classId}/sessions/{sessionId}/start
+POST   /api/v1/classes/{classId}/sessions/{sessionId}/end
+
+GET    /api/v1/videos
+POST   /api/v1/videos
+GET    /api/v1/videos/{videoId}
+PUT    /api/v1/videos/{videoId}
+DELETE /api/v1/videos/{videoId}
+
+POST   /api/v1/videos/upload
+GET    /api/v1/videos/{videoId}/upload-status
+
+GET    /api/v1/videos/{videoId}/progress
+POST   /api/v1/videos/{videoId}/progress
+
+V2
+POST   /api/v2/videos/{videoId}/transcode
+GET    /api/v2/videos/{videoId}/transcoding-status
+
+GET    /api/v2/videos/{videoId}/chapters
+POST   /api/v2/videos/{videoId}/chapters
+PUT    /api/v2/videos/{videoId}/chapters/{chapterId}
+DELETE /api/v2/videos/{videoId}/chapters/{chapterId}
+
+GET    /api/v2/classes/{classId}/attendance
+POST   /api/v2/classes/{classId}/attendance
+
+GET    /api/v2/users/{userId}/video-progress
+
+Platform endpoints
+
+These should be common across services.
+
+V1
+GET /health
+GET /health/live
+GET /health/ready
+
+
+For administrative operations:
+
+GET /api/v1/audit-logs
+GET /api/v1/audit-logs/{auditId}
+
+GET /api/v1/jobs
+GET /api/v1/jobs/{jobId}
+POST /api/v1/jobs/{jobId}/cancel
+
+V2
+
+Advanced integrations:
+
+GET    /api/v2/webhooks
+POST   /api/v2/webhooks
+GET    /api/v2/webhooks/{webhookId}
+PUT    /api/v2/webhooks/{webhookId}
+DELETE /api/v2/webhooks/{webhookId}
+
+POST   /api/v2/webhooks/{webhookId}/test
+GET    /api/v2/webhooks/{webhookId}/deliveries
+POST   /api/v2/webhooks/{webhookId}/deliveries/{deliveryId}/retry
+
+The important distinction
+
+I would think of the versions like this:
+
+                  API
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+       V1                    V2
+        │                     │
+        ↓                     ↓
+Stable contracts       Advanced contracts
+Production clients     New clients
+Mobile/Web              Future clients
+Core features           Advanced features
+
+
+V1 should not mean "old". It should be the first stable contract.
+
+And V2 shouldn't be used simply because you want more endpoints.
+
+For example, if V1 has:
+
+GET /api/v1/exams/{examId}
+
+
+and you add a completely new endpoint:
+
+GET /api/v1/exams/{examId}/statistics
+
+
+that generally doesn't require V2. It's additive and can safely be added to V1.
+
+But if you change the response from:
+
+{
+  "id": "123",
+  "name": "Java Exam"
+}
+
+
+to an incompatible structure such as:
+
+{
+  "exam": {
+    "identifier": "123",
+    "title": "Java Exam"
+  }
+}
+
+
+then V2 makes sense.
+
+My recommended rollout
+
+For your particular platform:
+
+V1 = production foundation
+
+Auth
+
+Registration
+Login
+Logout
+Refresh tokens
+Password recovery
+Email verification
+Basic MFA
+User management
+Roles/permissions
+Session management
+
+Exam
+
+Exam CRUD
+Sections
+Questions
+Scheduling
+Candidates
+Publishing
+
+Question Bank
+
+Question CRUD
+Options
+Subjects
+Topics
+Categories
+Tags
+
+Attempts
+
+Start
+Answer
+Navigation
+Timer
+Submit
+Recovery
+
+Results
+
+Calculation
+Finalization
+Publishing
+Basic reports
+Certificates
+
+Notifications
+
+Email
+SMS
+Push
+In-app notifications
+Preferences
+
+Proctoring
+
+Session
+Identity
+Environment check
+Events
+Evidence
+
+Video
+
+Classes
+Videos
+Upload
+Playback progress
+Live sessions
+
+Analytics
+
+Basic dashboards
+Student performance
+Exam performance
+Platform statistics
+V2 = advanced platform
+
+Then add:
+
+Passkeys/WebAuthn
+Advanced MFA
+SSO/OIDC/SAML
+Advanced RBAC/ABAC
+Service accounts
+Webhooks
+Advanced analytics
+Advanced reporting
+Adaptive examinations
+Question versioning/review workflows
+Advanced proctoring
+AI-assisted proctoring
+Advanced video processing
+Bulk operations
+Async jobs
+Advanced integrations
+
+That gives you a stable V1 with a very substantial feature set, while keeping V2 available for genuinely more advanced functionality and breaking contract changes.
+
+And given your existing folder structure, I would implement this as Controllers/V1/... inside each service first, while keeping the service/business layer version-independent unless the actual business behavior changes.

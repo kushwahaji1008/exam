@@ -16,6 +16,15 @@ namespace AuthService.Services
             _database = client.GetDatabase(databaseName);
         }
 
+        // Core Authentication & Users
         public IMongoCollection<User> Users => _database.GetCollection<User>("users");
+        
+        // Roles & Permissions Mapping
+        public IMongoCollection<Role> Roles => _database.GetCollection<Role>("roles");
+        public IMongoCollection<Permission> Permissions => _database.GetCollection<Permission>("permissions");
+        
+        // Audit & Security Logging
+        public IMongoCollection<AuditLog> AuditLogs => _database.GetCollection<AuditLog>("audit_logs");
+        public IMongoCollection<SecurityEvent> SecurityEvents => _database.GetCollection<SecurityEvent>("security_events");
     }
 }

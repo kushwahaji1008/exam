@@ -4,10 +4,10 @@ using AuthService.Models;
 using AuthService.Services;
 using System.Security.Claims;
 
-namespace AuthService.Controllers
+namespace AuthService.V1.Controllers
 {
     [ApiController]
-    [Route("api/auth")]
+    [Route("api/v1/auth")]
     public class AuthController : ControllerBase
     {
         private readonly AuthenticationService _authService;

@@ -1,0 +1,1024 @@
+Yes. Given your current backend, I would design the API as a versioned enterprise platform, not just add a few endpoints to each controller.
+
+You currently have 9 modules:
+
+AuthService
+ExamService
+ExamAttemptService
+QuestionBankService
+ResultService
+AnalyticsService
+NotificationService
+ProctoringService
+VideoClassesService
+
+I would use:
+
+/api/v1/...
+
+
+and eventually:
+
+/api/v2/...
+
+
+Below is a comprehensive endpoint catalog. Some endpoints are administrative, some student/instructor-facing, and some service-to-service/internal. You don't necessarily need to expose every internal endpoint publicly.
+
+1. AuthService
+
+This should be your central Identity & Access Management service.
+
+Authentication
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/logout
+POST   /api/v1/auth/refresh-token
+POST   /api/v1/auth/verify-email
+POST   /api/v1/auth/resend-otp
+POST   /api/v1/auth/forgot-password
+POST   /api/v1/auth/reset-password
+POST   /api/v1/auth/change-password
+POST   /api/v1/auth/check-email
+POST   /api/v1/auth/check-username
+POST   /api/v1/auth/validate-token
+POST   /api/v1/auth/revoke-token
+POST   /api/v1/auth/revoke-all-tokens
+
+Current user
+GET    /api/v1/auth/me
+PUT    /api/v1/auth/me
+PATCH  /api/v1/auth/me
+DELETE /api/v1/auth/me
+
+GET    /api/v1/auth/me/profile
+PUT    /api/v1/auth/me/profile
+
+GET    /api/v1/auth/me/security
+GET    /api/v1/auth/me/activity
+
+Email
+POST   /api/v1/auth/email/change
+POST   /api/v1/auth/email/verify
+POST   /api/v1/auth/email/resend-verification
+
+Phone
+POST   /api/v1/auth/phone/add
+POST   /api/v1/auth/phone/verify
+POST   /api/v1/auth/phone/change
+DELETE /api/v1/auth/phone
+POST   /api/v1/auth/phone/resend-otp
+
+MFA
+GET    /api/v1/auth/mfa
+GET    /api/v1/auth/mfa/status
+POST   /api/v1/auth/mfa/setup
+POST   /api/v1/auth/mfa/verify
+POST   /api/v1/auth/mfa/enable
+POST   /api/v1/auth/mfa/disable
+POST   /api/v1/auth/mfa/challenge
+POST   /api/v1/auth/mfa/recovery-codes
+POST   /api/v1/auth/mfa/recovery-codes/regenerate
+POST   /api/v1/auth/mfa/recovery-codes/verify
+
+Sessions
+GET    /api/v1/auth/sessions
+GET    /api/v1/auth/sessions/{sessionId}
+DELETE /api/v1/auth/sessions/{sessionId}
+POST   /api/v1/auth/sessions/{sessionId}/revoke
+POST   /api/v1/auth/sessions/revoke-all
+GET    /api/v1/auth/devices
+GET    /api/v1/auth/devices/{deviceId}
+DELETE /api/v1/auth/devices/{deviceId}
+
+User administration
+GET    /api/v1/users
+POST   /api/v1/users
+GET    /api/v1/users/{userId}
+PUT    /api/v1/users/{userId}
+PATCH  /api/v1/users/{userId}
+DELETE /api/v1/users/{userId}
+
+POST   /api/v1/users/{userId}/activate
+POST   /api/v1/users/{userId}/deactivate
+POST   /api/v1/users/{userId}/lock
+POST   /api/v1/users/{userId}/unlock
+POST   /api/v1/users/{userId}/force-password-reset
+POST   /api/v1/users/{userId}/verify-email
+POST   /api/v1/users/{userId}/reset-mfa
+POST   /api/v1/users/{userId}/revoke-sessions
+GET    /api/v1/users/{userId}/sessions
+GET    /api/v1/users/{userId}/activity
+
+Roles
+GET    /api/v1/roles
+POST   /api/v1/roles
+GET    /api/v1/roles/{roleId}
+PUT    /api/v1/roles/{roleId}
+PATCH  /api/v1/roles/{roleId}
+DELETE /api/v1/roles/{roleId}
+
+POST   /api/v1/roles/{roleId}/users/{userId}
+DELETE /api/v1/roles/{roleId}/users/{userId}
+
+GET    /api/v1/roles/{roleId}/permissions
+POST   /api/v1/roles/{roleId}/permissions
+DELETE /api/v1/roles/{roleId}/permissions/{permissionId}
+
+Permissions
+GET    /api/v1/permissions
+POST   /api/v1/permissions
+GET    /api/v1/permissions/{permissionId}
+PUT    /api/v1/permissions/{permissionId}
+DELETE /api/v1/permissions/{permissionId}
+
+Audit/security
+GET    /api/v1/audit-logs
+GET    /api/v1/audit-logs/{auditId}
+GET    /api/v1/users/{userId}/audit-logs
+GET    /api/v1/security-events
+GET    /api/v1/security-events/{eventId}
+
+
+AuthService: roughly 70+ endpoints once fully developed.
+
+2. ExamService
+
+This should manage the exam definition/lifecycle, not individual attempts.
+
+Exams
+GET    /api/v1/exams
+POST   /api/v1/exams
+GET    /api/v1/exams/{examId}
+PUT    /api/v1/exams/{examId}
+PATCH  /api/v1/exams/{examId}
+DELETE /api/v1/exams/{examId}
+
+Exam lifecycle
+POST   /api/v1/exams/{examId}/publish
+POST   /api/v1/exams/{examId}/unpublish
+POST   /api/v1/exams/{examId}/activate
+POST   /api/v1/exams/{examId}/deactivate
+POST   /api/v1/exams/{examId}/archive
+POST   /api/v1/exams/{examId}/restore
+POST   /api/v1/exams/{examId}/duplicate
+POST   /api/v1/exams/{examId}/clone
+
+Exam configuration
+GET    /api/v1/exams/{examId}/settings
+PUT    /api/v1/exams/{examId}/settings
+
+GET    /api/v1/exams/{examId}/schedule
+PUT    /api/v1/exams/{examId}/schedule
+
+GET    /api/v1/exams/{examId}/instructions
+PUT    /api/v1/exams/{examId}/instructions
+
+GET    /api/v1/exams/{examId}/grading
+PUT    /api/v1/exams/{examId}/grading
+
+Exam questions
+GET    /api/v1/exams/{examId}/questions
+POST   /api/v1/exams/{examId}/questions
+PUT    /api/v1/exams/{examId}/questions/{questionId}
+DELETE /api/v1/exams/{examId}/questions/{questionId}
+
+POST   /api/v1/exams/{examId}/questions/reorder
+POST   /api/v1/exams/{examId}/questions/randomize
+
+Sections
+GET    /api/v1/exams/{examId}/sections
+POST   /api/v1/exams/{examId}/sections
+GET    /api/v1/exams/{examId}/sections/{sectionId}
+PUT    /api/v1/exams/{examId}/sections/{sectionId}
+DELETE /api/v1/exams/{examId}/sections/{sectionId}
+
+POST   /api/v1/exams/{examId}/sections/reorder
+
+Candidates
+GET    /api/v1/exams/{examId}/candidates
+POST   /api/v1/exams/{examId}/candidates
+DELETE /api/v1/exams/{examId}/candidates/{userId}
+
+POST   /api/v1/exams/{examId}/candidates/bulk
+POST   /api/v1/exams/{examId}/candidates/{userId}/allow
+POST   /api/v1/exams/{examId}/candidates/{userId}/block
+
+Exam versions
+GET    /api/v1/exams/{examId}/versions
+GET    /api/v1/exams/{examId}/versions/{versionId}
+POST   /api/v1/exams/{examId}/versions
+POST   /api/v1/exams/{examId}/versions/{versionId}/publish
+POST   /api/v1/exams/{examId}/versions/{versionId}/restore
+
+Exam analytics
+GET    /api/v1/exams/{examId}/statistics
+GET    /api/v1/exams/{examId}/performance
+GET    /api/v1/exams/{examId}/completion
+GET    /api/v1/exams/{examId}/question-analysis
+
+
+ExamService: roughly 60+ endpoints.
+
+3. ExamAttemptService
+
+This is the actual examination session engine.
+
+Attempts
+GET    /api/v1/attempts
+POST   /api/v1/attempts
+GET    /api/v1/attempts/{attemptId}
+DELETE /api/v1/attempts/{attemptId}
+
+Start/end
+POST   /api/v1/attempts/{attemptId}/start
+POST   /api/v1/attempts/{attemptId}/pause
+POST   /api/v1/attempts/{attemptId}/resume
+POST   /api/v1/attempts/{attemptId}/submit
+POST   /api/v1/attempts/{attemptId}/force-submit
+POST   /api/v1/attempts/{attemptId}/terminate
+
+Questions
+GET    /api/v1/attempts/{attemptId}/questions
+GET    /api/v1/attempts/{attemptId}/questions/{questionId}
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/answer
+PUT    /api/v1/attempts/{attemptId}/questions/{questionId}/answer
+DELETE /api/v1/attempts/{attemptId}/questions/{questionId}/answer
+
+Navigation
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/next
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/previous
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/mark-review
+POST   /api/v1/attempts/{attemptId}/questions/{questionId}/unmark-review
+GET    /api/v1/attempts/{attemptId}/navigation
+
+Timer
+GET    /api/v1/attempts/{attemptId}/timer
+POST   /api/v1/attempts/{attemptId}/timer/sync
+POST   /api/v1/attempts/{attemptId}/extend-time
+
+Candidate attempts
+GET    /api/v1/users/{userId}/attempts
+GET    /api/v1/exams/{examId}/attempts
+GET    /api/v1/attempts/{attemptId}/events
+
+Recovery
+POST   /api/v1/attempts/{attemptId}/recover
+POST   /api/v1/attempts/{attemptId}/resume-session
+POST   /api/v1/attempts/{attemptId}/sync
+
+Admin
+POST   /api/v1/attempts/{attemptId}/invalidate
+POST   /api/v1/attempts/{attemptId}/restore
+POST   /api/v1/attempts/{attemptId}/reopen
+POST   /api/v1/attempts/{attemptId}/grant-extra-time
+
+
+ExamAttemptService: roughly 40+ endpoints.
+
+4. QuestionBankService
+
+This should become a serious question-management system.
+
+Questions
+GET    /api/v1/questions
+POST   /api/v1/questions
+GET    /api/v1/questions/{questionId}
+PUT    /api/v1/questions/{questionId}
+PATCH  /api/v1/questions/{questionId}
+DELETE /api/v1/questions/{questionId}
+
+Question lifecycle
+POST   /api/v1/questions/{questionId}/publish
+POST   /api/v1/questions/{questionId}/unpublish
+POST   /api/v1/questions/{questionId}/archive
+POST   /api/v1/questions/{questionId}/restore
+POST   /api/v1/questions/{questionId}/duplicate
+
+Question versions
+GET    /api/v1/questions/{questionId}/versions
+GET    /api/v1/questions/{questionId}/versions/{versionId}
+POST   /api/v1/questions/{questionId}/versions
+POST   /api/v1/questions/{questionId}/versions/{versionId}/restore
+
+Question options
+GET    /api/v1/questions/{questionId}/options
+POST   /api/v1/questions/{questionId}/options
+PUT    /api/v1/questions/{questionId}/options/{optionId}
+DELETE /api/v1/questions/{questionId}/options/{optionId}
+
+Categories
+GET    /api/v1/question-categories
+POST   /api/v1/question-categories
+GET    /api/v1/question-categories/{categoryId}
+PUT    /api/v1/question-categories/{categoryId}
+DELETE /api/v1/question-categories/{categoryId}
+
+Subjects
+GET    /api/v1/subjects
+POST   /api/v1/subjects
+GET    /api/v1/subjects/{subjectId}
+PUT    /api/v1/subjects/{subjectId}
+DELETE /api/v1/subjects/{subjectId}
+
+Topics
+GET    /api/v1/topics
+POST   /api/v1/topics
+GET    /api/v1/topics/{topicId}
+PUT    /api/v1/topics/{topicId}
+DELETE /api/v1/topics/{topicId}
+
+Difficulty
+GET    /api/v1/difficulties
+POST   /api/v1/difficulties
+PUT    /api/v1/difficulties/{difficultyId}
+DELETE /api/v1/difficulties/{difficultyId}
+
+Tags
+GET    /api/v1/tags
+POST   /api/v1/tags
+PUT    /api/v1/tags/{tagId}
+DELETE /api/v1/tags/{tagId}
+
+Bulk operations
+POST   /api/v1/questions/import
+POST   /api/v1/questions/export
+POST   /api/v1/questions/bulk
+POST   /api/v1/questions/bulk-publish
+POST   /api/v1/questions/bulk-archive
+POST   /api/v1/questions/bulk-delete
+
+Question review
+POST   /api/v1/questions/{questionId}/submit-review
+POST   /api/v1/questions/{questionId}/approve
+POST   /api/v1/questions/{questionId}/reject
+GET    /api/v1/questions/review-queue
+
+
+QuestionBankService: roughly 60+ endpoints.
+
+5. ResultService
+
+This should handle grading/result lifecycle.
+
+Results
+GET    /api/v1/results
+GET    /api/v1/results/{resultId}
+GET    /api/v1/users/{userId}/results
+GET    /api/v1/exams/{examId}/results
+GET    /api/v1/attempts/{attemptId}/result
+
+Grading
+POST   /api/v1/results/{resultId}/calculate
+POST   /api/v1/results/{resultId}/recalculate
+POST   /api/v1/results/{resultId}/finalize
+POST   /api/v1/results/{resultId}/unfinalize
+
+Manual grading
+GET    /api/v1/results/{resultId}/manual-grading
+POST   /api/v1/results/{resultId}/grade
+PUT    /api/v1/results/{resultId}/questions/{questionId}/grade
+POST   /api/v1/results/{resultId}/questions/{questionId}/override
+
+Publishing
+POST   /api/v1/results/{resultId}/publish
+POST   /api/v1/results/{resultId}/unpublish
+POST   /api/v1/results/bulk-publish
+
+Certificates
+GET    /api/v1/certificates
+GET    /api/v1/certificates/{certificateId}
+POST   /api/v1/certificates/generate
+GET    /api/v1/users/{userId}/certificates
+GET    /api/v1/certificates/{certificateId}/download
+GET    /api/v1/certificates/{certificateId}/verify
+
+Reports
+GET    /api/v1/results/{resultId}/report
+GET    /api/v1/results/{resultId}/breakdown
+GET    /api/v1/results/{resultId}/rank
+GET    /api/v1/exams/{examId}/ranking
+GET    /api/v1/exams/{examId}/leaderboard
+
+Export
+POST   /api/v1/results/export
+POST   /api/v1/results/export/csv
+POST   /api/v1/results/export/excel
+POST   /api/v1/results/export/pdf
+
+
+ResultService: roughly 40+ endpoints.
+
+6. AnalyticsService
+
+This should be primarily read/aggregation/reporting oriented.
+
+Dashboard
+GET    /api/v1/analytics/dashboard
+GET    /api/v1/analytics/admin-dashboard
+GET    /api/v1/analytics/student-dashboard
+GET    /api/v1/analytics/instructor-dashboard
+
+Student analytics
+GET    /api/v1/analytics/users/{userId}
+GET    /api/v1/analytics/users/{userId}/performance
+GET    /api/v1/analytics/users/{userId}/progress
+GET    /api/v1/analytics/users/{userId}/accuracy
+GET    /api/v1/analytics/users/{userId}/attempts
+GET    /api/v1/analytics/users/{userId}/time-spent
+GET    /api/v1/analytics/users/{userId}/strengths
+GET    /api/v1/analytics/users/{userId}/weaknesses
+
+Exam analytics
+GET    /api/v1/analytics/exams/{examId}
+GET    /api/v1/analytics/exams/{examId}/performance
+GET    /api/v1/analytics/exams/{examId}/completion
+GET    /api/v1/analytics/exams/{examId}/dropout
+GET    /api/v1/analytics/exams/{examId}/timing
+GET    /api/v1/analytics/exams/{examId}/questions
+GET    /api/v1/analytics/exams/{examId}/difficulty
+GET    /api/v1/analytics/exams/{examId}/distribution
+
+Question analytics
+GET    /api/v1/analytics/questions/{questionId}
+GET    /api/v1/analytics/questions/{questionId}/accuracy
+GET    /api/v1/analytics/questions/{questionId}/difficulty
+GET    /api/v1/analytics/questions/{questionId}/responses
+GET    /api/v1/analytics/questions/{questionId}/discrimination
+
+Platform analytics
+GET    /api/v1/analytics/platform
+GET    /api/v1/analytics/users
+GET    /api/v1/analytics/exams
+GET    /api/v1/analytics/attempts
+GET    /api/v1/analytics/revenue
+GET    /api/v1/analytics/activity
+
+Reports
+POST   /api/v1/analytics/reports
+GET    /api/v1/analytics/reports
+GET    /api/v1/analytics/reports/{reportId}
+POST   /api/v1/analytics/reports/{reportId}/generate
+GET    /api/v1/analytics/reports/{reportId}/download
+DELETE /api/v1/analytics/reports/{reportId}
+
+
+AnalyticsService: roughly 40+ endpoints.
+
+7. NotificationService
+
+Since you already have SignalR/Hubs, I'd make this service support multiple channels.
+
+Notifications
+GET    /api/v1/notifications
+GET    /api/v1/notifications/{notificationId}
+POST   /api/v1/notifications
+DELETE /api/v1/notifications/{notificationId}
+
+POST   /api/v1/notifications/{notificationId}/read
+POST   /api/v1/notifications/{notificationId}/unread
+POST   /api/v1/notifications/read-all
+DELETE /api/v1/notifications/read
+
+Send
+POST   /api/v1/notifications/send
+POST   /api/v1/notifications/send-bulk
+POST   /api/v1/notifications/schedule
+POST   /api/v1/notifications/{notificationId}/cancel
+
+Email
+POST   /api/v1/notifications/email
+POST   /api/v1/notifications/email/bulk
+POST   /api/v1/notifications/email/template
+
+SMS
+POST   /api/v1/notifications/sms
+POST   /api/v1/notifications/sms/bulk
+
+Push
+POST   /api/v1/notifications/push
+POST   /api/v1/notifications/push/bulk
+POST   /api/v1/devices
+GET    /api/v1/devices
+DELETE /api/v1/devices/{deviceId}
+
+Templates
+GET    /api/v1/notification-templates
+POST   /api/v1/notification-templates
+GET    /api/v1/notification-templates/{templateId}
+PUT    /api/v1/notification-templates/{templateId}
+DELETE /api/v1/notification-templates/{templateId}
+POST   /api/v1/notification-templates/{templateId}/preview
+
+Preferences
+GET    /api/v1/notification-preferences
+PUT    /api/v1/notification-preferences
+GET    /api/v1/users/{userId}/notification-preferences
+PUT    /api/v1/users/{userId}/notification-preferences
+
+Delivery tracking
+GET    /api/v1/notifications/{notificationId}/delivery
+GET    /api/v1/notifications/delivery-failures
+POST   /api/v1/notifications/{notificationId}/retry
+
+
+NotificationService: roughly 40+ endpoints.
+
+8. ProctoringService
+
+This is especially important because your platform is an exam platform.
+
+Proctoring sessions
+GET    /api/v1/proctoring/sessions
+POST   /api/v1/proctoring/sessions
+GET    /api/v1/proctoring/sessions/{sessionId}
+POST   /api/v1/proctoring/sessions/{sessionId}/start
+POST   /api/v1/proctoring/sessions/{sessionId}/pause
+POST   /api/v1/proctoring/sessions/{sessionId}/resume
+POST   /api/v1/proctoring/sessions/{sessionId}/end
+POST   /api/v1/proctoring/sessions/{sessionId}/terminate
+
+Identity verification
+POST   /api/v1/proctoring/sessions/{sessionId}/identity/start
+POST   /api/v1/proctoring/sessions/{sessionId}/identity/verify
+GET    /api/v1/proctoring/sessions/{sessionId}/identity
+
+Environment checks
+POST   /api/v1/proctoring/sessions/{sessionId}/environment-check
+GET    /api/v1/proctoring/sessions/{sessionId}/environment-check
+POST   /api/v1/proctoring/sessions/{sessionId}/device-check
+POST   /api/v1/proctoring/sessions/{sessionId}/network-check
+
+Events
+GET    /api/v1/proctoring/sessions/{sessionId}/events
+POST   /api/v1/proctoring/sessions/{sessionId}/events
+GET    /api/v1/proctoring/events
+GET    /api/v1/proctoring/events/{eventId}
+
+
+Events could include:
+
+FACE_NOT_DETECTED
+MULTIPLE_FACES
+LOOKING_AWAY
+TAB_SWITCH
+WINDOW_BLUR
+SCREEN_SHARE_STOPPED
+MIC_DISABLED
+CAMERA_DISABLED
+NETWORK_DISCONNECTED
+SUSPICIOUS_MOVEMENT
+
+Evidence
+GET    /api/v1/proctoring/sessions/{sessionId}/evidence
+GET    /api/v1/proctoring/evidence/{evidenceId}
+POST   /api/v1/proctoring/sessions/{sessionId}/evidence
+DELETE /api/v1/proctoring/evidence/{evidenceId}
+
+Live monitoring
+GET    /api/v1/proctoring/live/sessions
+GET    /api/v1/proctoring/live/sessions/{sessionId}
+POST   /api/v1/proctoring/sessions/{sessionId}/flag
+POST   /api/v1/proctoring/sessions/{sessionId}/clear-flag
+
+Review
+GET    /api/v1/proctoring/reviews
+GET    /api/v1/proctoring/reviews/{reviewId}
+POST   /api/v1/proctoring/reviews/{reviewId}/approve
+POST   /api/v1/proctoring/reviews/{reviewId}/reject
+POST   /api/v1/proctoring/reviews/{reviewId}/escalate
+
+Proctoring policies
+GET    /api/v1/proctoring/policies
+POST   /api/v1/proctoring/policies
+GET    /api/v1/proctoring/policies/{policyId}
+PUT    /api/v1/proctoring/policies/{policyId}
+DELETE /api/v1/proctoring/policies/{policyId}
+
+
+ProctoringService: roughly 50+ endpoints.
+
+9. VideoClassesService
+
+Your existing Hubs folder suggests you can support both on-demand video and live classes.
+
+Courses/classes
+GET    /api/v1/classes
+POST   /api/v1/classes
+GET    /api/v1/classes/{classId}
+PUT    /api/v1/classes/{classId}
+PATCH  /api/v1/classes/{classId}
+DELETE /api/v1/classes/{classId}
+
+Class lifecycle
+POST   /api/v1/classes/{classId}/publish
+POST   /api/v1/classes/{classId}/unpublish
+POST   /api/v1/classes/{classId}/archive
+POST   /api/v1/classes/{classId}/restore
+
+Live sessions
+GET    /api/v1/classes/{classId}/sessions
+POST   /api/v1/classes/{classId}/sessions
+GET    /api/v1/classes/{classId}/sessions/{sessionId}
+PUT    /api/v1/classes/{classId}/sessions/{sessionId}
+DELETE /api/v1/classes/{classId}/sessions/{sessionId}
+
+POST   /api/v1/classes/{classId}/sessions/{sessionId}/start
+POST   /api/v1/classes/{classId}/sessions/{sessionId}/end
+POST   /api/v1/classes/{classId}/sessions/{sessionId}/cancel
+
+Videos
+GET    /api/v1/videos
+POST   /api/v1/videos
+GET    /api/v1/videos/{videoId}
+PUT    /api/v1/videos/{videoId}
+DELETE /api/v1/videos/{videoId}
+
+POST   /api/v1/videos/{videoId}/publish
+POST   /api/v1/videos/{videoId}/unpublish
+POST   /api/v1/videos/{videoId}/archive
+
+Upload/transcoding
+POST   /api/v1/videos/upload
+POST   /api/v1/videos/{videoId}/upload-url
+GET    /api/v1/videos/{videoId}/upload-status
+POST   /api/v1/videos/{videoId}/transcode
+GET    /api/v1/videos/{videoId}/transcoding-status
+
+Chapters
+GET    /api/v1/videos/{videoId}/chapters
+POST   /api/v1/videos/{videoId}/chapters
+PUT    /api/v1/videos/{videoId}/chapters/{chapterId}
+DELETE /api/v1/videos/{videoId}/chapters/{chapterId}
+
+Materials
+GET    /api/v1/classes/{classId}/materials
+POST   /api/v1/classes/{classId}/materials
+DELETE /api/v1/classes/{classId}/materials/{materialId}
+
+Enrollment
+GET    /api/v1/classes/{classId}/students
+POST   /api/v1/classes/{classId}/students
+DELETE /api/v1/classes/{classId}/students/{userId}
+POST   /api/v1/classes/{classId}/students/bulk
+
+Watch progress
+GET    /api/v1/videos/{videoId}/progress
+POST   /api/v1/videos/{videoId}/progress
+PUT    /api/v1/videos/{videoId}/progress
+GET    /api/v1/users/{userId}/video-progress
+
+Attendance
+GET    /api/v1/classes/{classId}/attendance
+POST   /api/v1/classes/{classId}/attendance
+PUT    /api/v1/classes/{classId}/attendance/{userId}
+GET    /api/v1/classes/{classId}/attendance/report
+
+
+VideoClassesService: roughly 60+ endpoints.
+
+Cross-service enterprise endpoints
+
+There are also some endpoints that I would standardize across your services.
+
+Health
+
+Every service:
+
+GET /health/live
+GET /health/ready
+GET /health
+
+
+For example:
+
+GET /health/live
+
+
+checks that the process is alive.
+
+GET /health/ready
+
+
+checks dependencies such as database/cache/message broker.
+
+Standard pagination
+
+For large collections, don't just do:
+
+GET /api/v1/users
+
+
+with unlimited results.
+
+Use:
+
+GET /api/v1/users?page=1&pageSize=50
+
+
+and support:
+
+GET /api/v1/users?page=1&pageSize=50&sortBy=createdAt&sortDirection=desc
+
+
+For enterprise search:
+
+GET /api/v1/users?search=john&status=active&role=student
+
+
+The same pattern should be used throughout:
+
+/exams
+/questions
+/attempts
+/results
+/notifications
+/audit-logs
+/proctoring/events
+/classes
+/videos
+
+Bulk operations
+
+Enterprise systems benefit enormously from bulk APIs.
+
+For example:
+
+POST /api/v1/users/bulk
+POST /api/v1/users/bulk-import
+POST /api/v1/users/bulk-delete
+
+POST /api/v1/exams/bulk
+POST /api/v1/questions/bulk
+POST /api/v1/questions/import
+POST /api/v1/questions/export
+
+POST /api/v1/notifications/send-bulk
+POST /api/v1/exams/{examId}/candidates/bulk
+
+
+For very large operations, I'd make these asynchronous jobs instead of keeping an HTTP request open.
+
+Background job API
+
+For enterprise bulk processing, introduce:
+
+POST   /api/v1/jobs
+GET    /api/v1/jobs
+GET    /api/v1/jobs/{jobId}
+POST   /api/v1/jobs/{jobId}/cancel
+GET    /api/v1/jobs/{jobId}/status
+GET    /api/v1/jobs/{jobId}/result
+
+
+Then:
+
+POST /api/v1/questions/import
+
+
+could return:
+
+{
+  "jobId": "....",
+  "status": "queued"
+}
+
+
+rather than waiting several minutes.
+
+API keys / service-to-service authentication
+
+Because you have multiple services, I would also consider internal service authentication.
+
+POST   /api/v1/service-accounts
+GET    /api/v1/service-accounts
+GET    /api/v1/service-accounts/{id}
+PUT    /api/v1/service-accounts/{id}
+DELETE /api/v1/service-accounts/{id}
+
+POST   /api/v1/service-accounts/{id}/rotate-secret
+POST   /api/v1/service-accounts/{id}/revoke
+
+
+However, don't expose these publicly. These should be restricted to trusted infrastructure/admin operations.
+
+For service-to-service calls, I'd prefer strong service identity rather than passing a user's JWT everywhere.
+
+Webhooks
+
+For integrations:
+
+GET    /api/v1/webhooks
+POST   /api/v1/webhooks
+GET    /api/v1/webhooks/{webhookId}
+PUT    /api/v1/webhooks/{webhookId}
+DELETE /api/v1/webhooks/{webhookId}
+
+POST   /api/v1/webhooks/{webhookId}/test
+POST   /api/v1/webhooks/{webhookId}/rotate-secret
+GET    /api/v1/webhooks/{webhookId}/deliveries
+POST   /api/v1/webhooks/{webhookId}/deliveries/{deliveryId}/retry
+
+
+Useful events:
+
+exam.published
+exam.started
+exam.completed
+attempt.submitted
+result.published
+user.created
+user.updated
+certificate.issued
+class.started
+video.published
+
+Configuration / feature flags
+
+For enterprise administration:
+
+GET    /api/v1/config
+GET    /api/v1/features
+GET    /api/v1/features/{feature}
+PUT    /api/v1/features/{feature}
+
+
+But these should generally be restricted to administrators.
+
+API documentation
+
+Each service should expose Swagger/OpenAPI appropriately.
+
+Development:
+
+/swagger
+
+
+Production should ideally restrict or protect documentation rather than exposing unrestricted internal API documentation publicly.
+
+Approximate endpoint count
+
+If you implement the complete architecture above:
+
+Service	Approx. endpoints
+AuthService	70+
+ExamService	60+
+ExamAttemptService	40+
+QuestionBankService	60+
+ResultService	40+
+AnalyticsService	40+
+NotificationService	40+
+ProctoringService	50+
+VideoClassesService	60+
+Jobs/Platform	15+
+Webhooks/Integrations	10+
+
+That's approximately 485–500+ endpoint operations.
+
+But I would not implement 500 endpoints just because we can. A mature enterprise platform may eventually reach that size, but some should only be introduced when the corresponding business capability exists.
+
+Recommended final architecture
+
+With your current project, I'd aim for this:
+
+backend/
+│
+├── Modules/
+│   │
+│   ├── AuthService/
+│   │   ├── Controllers/
+│   │   │   └── V1/
+│   │   ├── Models/
+│   │   │   ├── Requests/
+│   │   │   ├── Responses/
+│   │   │   └── Entities/
+│   │   ├── Services/
+│   │   └── ...
+│   │
+│   ├── ExamService/
+│   │   ├── Controllers/
+│   │   │   └── V1/
+│   │   ├── Models/
+│   │   ├── Services/
+│   │   └── ...
+│   │
+│   ├── ExamAttemptService/
+│   ├── QuestionBankService/
+│   ├── ResultService/
+│   ├── AnalyticsService/
+│   ├── NotificationService/
+│   ├── ProctoringService/
+│   └── VideoClassesService/
+│
+└── Shared/
+    ├── Contracts/
+    ├── Security/
+    ├── Exceptions/
+    ├── Middleware/
+    ├── Logging/
+    └── Infrastructure/
+
+
+And externally:
+
+/api/v1/auth/...
+/api/v1/users/...
+/api/v1/roles/...
+/api/v1/permissions/...
+
+/api/v1/exams/...
+/api/v1/attempts/...
+/api/v1/questions/...
+/api/v1/results/...
+/api/v1/analytics/...
+/api/v1/notifications/...
+/api/v1/proctoring/...
+/api/v1/classes/...
+/api/v1/videos/...
+
+/health/live
+/health/ready
+
+One critical recommendation
+
+Before we start writing hundreds of controllers, we should establish the domain boundaries and ownership.
+
+For example:
+
+AuthService
+    owns → Users
+    owns → Roles
+    owns → Permissions
+    owns → Sessions
+    owns → RefreshTokens
+
+ExamService
+    owns → Exams
+    owns → ExamSections
+    owns → ExamConfiguration
+
+QuestionBankService
+    owns → Questions
+    owns → Options
+    owns → Topics
+    owns → QuestionVersions
+
+ExamAttemptService
+    owns → Attempts
+    owns → Answers
+    owns → AttemptEvents
+
+ResultService
+    owns → Results
+    owns → Grades
+    owns → Certificates
+
+ProctoringService
+    owns → ProctoringSessions
+    owns → ProctoringEvents
+    owns → Evidence
+
+NotificationService
+    owns → Notifications
+    owns → Templates
+    owns → DeliveryRecords
+
+VideoClassesService
+    owns → Classes
+    owns → Videos
+    owns → Sessions
+    owns → Attendance
+
+AnalyticsService
+    owns → Aggregations
+    owns → Reports
+
+
+No service should directly modify another service's database. Communication should happen through APIs/events/messages.
+
+That is the part that will make the difference between a collection of controllers and an actual enterprise architecture.
+
+My recommendation for your project
+
+Don't implement all ~500 endpoints at once. Build V1 in this order:
+
+1. Shared architecture
+2. API versioning
+3. Global error/response contract
+4. AuthService
+5. User/RBAC
+6. ExamService
+7. QuestionBankService
+8. ExamAttemptService
+9. ResultService
+10. ProctoringService
+11. NotificationService
+12. VideoClassesService
+13. AnalyticsService
+14. Jobs/background processing
+15. Audit/event infrastructure
+16. Gateway/service-to-service security
+17. Observability
+18. Integration/security tests
+
+
+That gives you a much safer path to an enterprise-grade online examination/learning platform without creating a giant unmaintainable codebase.
