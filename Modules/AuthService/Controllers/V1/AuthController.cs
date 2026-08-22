@@ -6,8 +6,9 @@ using System.Security.Claims;
 
 namespace AuthService.V1.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/v1/auth")]
+    [Route("api/v{version:apiVersion}/auth")]
     public class AuthController : ControllerBase
     {
         private readonly AuthenticationService _authService;

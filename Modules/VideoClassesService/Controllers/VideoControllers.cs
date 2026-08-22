@@ -7,16 +7,16 @@ namespace VideoClassesService.Controllers
 {
     [ApiController]
     [Route("api/videos/courses")]
-    public class CoursesController : ControllerBase
+    public class VideosController : ControllerBase
     {
         private readonly CourseManagementService _courseService;
         private readonly ProgressTrackingService _progressService;
-        private readonly ILogger<CoursesController> _logger;
+        private readonly ILogger<VideosController> _logger;
 
-        public CoursesController(
+        public VideosController(
             CourseManagementService courseService,
             ProgressTrackingService progressService,
-            ILogger<CoursesController> logger)
+            ILogger<VideosController> logger)
         {
             _courseService = courseService;
             _progressService = progressService;

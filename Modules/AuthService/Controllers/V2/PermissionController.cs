@@ -5,8 +5,9 @@ using AuthService.Services;
 
 namespace AuthService.V2.Controllers
 {
+    [ApiVersion("2.0")]
     [ApiController]
-    [Route("api/v2/permissions")]
+    [Route("api/v{version:apiVersion}/permissions")]
     [Authorize(Roles = "Admin,SuperAdmin")] // Restrict to admin roles
     public class PermissionController : ControllerBase
     {

@@ -5,8 +5,9 @@ using AuthService.Services;
 
 namespace AuthService.V2.Controllers
 {
+    [ApiVersion("2.0")]
     [ApiController]
-    [Route("api/v2")]
+    [Route("api/v{version:apiVersion}/audit-security")]
     [Authorize(Roles = "Admin,SuperAdmin")] // Restrict to admin roles for audit compliance
     public class AuditSecurityController : ControllerBase
     {

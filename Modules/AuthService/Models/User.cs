@@ -8,14 +8,15 @@ namespace AuthService.Models
     // DATABASE ENTITIES
     // ==========================================
 
+    [BsonIgnoreExtraElements]
     public class User
     {
         [BsonId]
         [BsonRepresentation(BsonType.String)]
         public string Id { get; set; } = Guid.NewGuid().ToString();
 
-        // [Required]
-        // public string UserId { get; set; } = string.Empty;
+        [Required]
+        public string UserId { get; set; } = string.Empty;
 
         [Required]
         [EmailAddress]

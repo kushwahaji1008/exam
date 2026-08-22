@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using ExamService.Models;
 using ExamService.Services;
 
-namespace ExamService.Controllers
+namespace ExamService.V1.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/exams")]
+    [Route("api/v{version:apiVersion}/exams")]
     public class ExamsController : ControllerBase
     {
         private readonly ExamManagementService _examService;
