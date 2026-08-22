@@ -8,13 +8,13 @@ namespace AuthService.V2.Controllers
 {
     [ApiController]
     [Route("api/v2/auth")]
-    public class AuthController : ControllerBase
+    public class AuthV2Controller : ControllerBase
     {
         private readonly AuthenticationService _authService;
         private readonly IPhoneService _phoneService;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(AuthenticationService authService, IPhoneService phoneService, ILogger<AuthController> logger)
+        public AuthV2Controller(AuthenticationService authService, IPhoneService phoneService, ILogger<AuthController> logger)
         {
             _authService = authService;
             _phoneService = phoneService;
