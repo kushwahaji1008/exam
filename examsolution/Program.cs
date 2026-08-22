@@ -85,6 +85,7 @@ builder.Services.AddHttpClient();
 
 // --- THE FIX: Map the Interface to the Implementation ---
 builder.Services.AddTransient<AuthService.Services.IEmailService, AuthService.Services.EmailService>();
+builder.Services.AddTransient<AuthService.Services.IPhoneService, AuthService.Services.PhoneService>();
 
 // --- AuthService ---
 builder.Services.AddScoped<AuthService.Services.MongoDbService>();
