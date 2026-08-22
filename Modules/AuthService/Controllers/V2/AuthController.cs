@@ -12,9 +12,9 @@ namespace AuthService.V2.Controllers
     {
         private readonly AuthenticationService _authService;
         private readonly IPhoneService _phoneService;
-        private readonly ILogger<AuthController> _logger;
+        private readonly ILogger<AuthV2Controller> _logger;
 
-        public AuthV2Controller(AuthenticationService authService, IPhoneService phoneService, ILogger<AuthController> logger)
+        public AuthV2Controller(AuthenticationService authService, IPhoneService phoneService, ILogger<AuthV2Controller> logger)
         {
             _authService = authService;
             _phoneService = phoneService;
