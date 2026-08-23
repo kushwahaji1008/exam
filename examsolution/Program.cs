@@ -81,13 +81,13 @@ builder.Services.AddSwaggerGen(options =>
     });
 
     // If you add v2 later:
-    //
-    // options.SwaggerDoc("v2", new OpenApiInfo
-    // {
-    //     Title = "Course Service API",
-    //     Version = "v2",
-    //     Description = "Course Service API - Version 2.0"
-    // });
+    
+    options.SwaggerDoc("v2", new OpenApiInfo
+    {
+        Title = "Course Service API",
+        Version = "v2",
+        Description = "Course Service API - Version 2.0"
+    });
 
     // ==========================================
     // SCHEMA ID
