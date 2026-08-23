@@ -19,7 +19,7 @@ I would use:
 
 and eventually:
 
-/api/v2/...
+/api/v1/...
 
 
 Below is a comprehensive endpoint catalog. Some endpoints are administrative, some student/instructor-facing, and some service-to-service/internal. You don't necessarily need to expose every internal endpoint publicly.
@@ -886,7 +886,7 @@ backend/
 │   │
 │   ├── AuthService/
 │   │   ├── Controllers/
-│   │   │   └── V1/
+│   │   │   └── v1/
 │   │   ├── Models/
 │   │   │   ├── Requests/
 │   │   │   ├── Responses/
@@ -896,7 +896,7 @@ backend/
 │   │
 │   ├── ExamService/
 │   │   ├── Controllers/
-│   │   │   └── V1/
+│   │   │   └── v1/
 │   │   ├── Models/
 │   │   ├── Services/
 │   │   └── ...
@@ -999,7 +999,7 @@ That is the part that will make the difference between a collection of controlle
 
 My recommendation for your project
 
-Don't implement all ~500 endpoints at once. Build V1 in this order:
+Don't implement all ~500 endpoints at once. Build v1 in this order:
 
 1. Shared architecture
 2. API versioning

@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using AuthService.Models;
 using AuthService.Services;
 
-namespace AuthService.V2.Controllers
+namespace AuthService.Controllers.V1
 {
-    [ApiVersion("2.0")]
+    [ApiVersion("1.0")]
     [ApiController]
     [Route("api/v{version:apiVersion}/roles")]
     [Authorize(Roles = "Admin,SuperAdmin")] // Restrict to admin roles

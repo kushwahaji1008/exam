@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ExamService.Services;
 
-namespace ExamService.V2.Controllers
+namespace ExamService.Controllers.V1
 {
-    [ApiVersion("2.0")]
+    [ApiVersion("1.0")]
     [ApiController]
     [Route("api/v{version:apiVersion}/exams/{examId}/candidates")]
     [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
