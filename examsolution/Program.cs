@@ -154,7 +154,7 @@ builder.Services.AddScoped<ExamService.Services.MongoDbService>();
 builder.Services.AddScoped<ExamService.Services.ExamManagementService>();
 
 // --- ResultService ---
-builder.Services.AddScoped<ResultService.Services.MongoDbService>();
+builder.Services.AddSingleton<ResultService.Services.MongoDbService>();
 builder.Services.AddScoped<ResultService.Services.EvaluationService>();
 
 // --- ExamAttemptService ---
@@ -185,6 +185,10 @@ builder.Services.AddScoped<VideoClassesService.Services.CourseManagementService>
 // --- CourseService  ---
 builder.Services.AddSingleton<CourseService.Services.MongoDbService>();
 builder.Services.AddScoped<CourseService.Services.CourseManagementService>();
+
+// --- AnalyticsService ---
+builder.Services.AddSingleton<AnalyticsService.Services.MongoDbService>();
+builder.Services.AddScoped<AnalyticsService.Services.AnalyticsManagementService>();
 
 var app = builder.Build();
 
@@ -232,3 +236,27 @@ app.MapHub<NotificationService.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<VideoClassesService.Hubs.LiveClassHub>("/hubs/liveclass");
 
 app.Run();
+
+internal interface IAnalyticsService
+{
+}
+
+internal class AnalyticsManagerService
+{
+}
+
+internal interface IAnalyticsRepository
+{
+}
+
+internal class ResultManagerService
+{
+}
+
+internal interface IResultService
+{
+}
+
+internal interface IResultRepository
+{
+}

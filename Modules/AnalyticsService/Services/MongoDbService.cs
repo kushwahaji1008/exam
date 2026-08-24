@@ -1,7 +1,7 @@
 using MongoDB.Driver;
-using ResultService.Models;
+using AnalyticsService.Models;
 
-namespace ResultService.Services
+namespace AnalyticsService.Services
 {
     public class MongoDbService
     {
@@ -10,13 +10,12 @@ namespace ResultService.Services
         public MongoDbService(IConfiguration configuration)
         {
             var connectionString = configuration["MongoDb:ConnectionString"] ?? "mongodb://localhost:27017";
-            var databaseName = configuration["MongoDb:ResultDatabase"] ?? "exam_results_db";
+            var databaseName = configuration["MongoDb:AnalyticsDatabase"] ?? "analytics_db";
 
             var client = new MongoClient(connectionString);
             _database = client.GetDatabase(databaseName);
         }
 
-        public IMongoCollection<ExamResult> Results => _database.GetCollection<ExamResult>("results");
-        public IMongoCollection<Certificate> Certificates => _database.GetCollection<Certificate>("certificates");
+        public IMongoCollection<AnalyticsReport> Reports => _database.GetCollection<AnalyticsReport>("reports");
     }
 }

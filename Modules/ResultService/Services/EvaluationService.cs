@@ -1,163 +1,114 @@
 using MongoDB.Driver;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
-using System.Text.Json;
+using ResultService.Models;
 
 namespace ResultService.Services
 {
     public class EvaluationService
     {
         private readonly MongoDbService _mongoDb;
-        private readonly ILogger<EvaluationService> _logger;
 
-        public EvaluationService(MongoDbService mongoDb, ILogger<EvaluationService> logger)
+        public EvaluationService(MongoDbService mongoDb)
         {
             _mongoDb = mongoDb;
-            _logger = logger;
         }
 
-        public async Task<EvaluationResult> EvaluateAttemptAsync(string attemptId)
+        // ==========================================
+        // 1. RESULTS & GRADING
+        // ==========================================
+        public async Task<List<ExamResult>> GetAllResultsAsync() => 
+            await _mongoDb.Results.Find(_ => true).ToListAsync();
+
+        public async Task<ExamResult?> GetResultByIdAsync(string resultId) => 
+            await _mongoDb.Results.Find(r => r.Id == resultId).FirstOrDefaultAsync();
+
+        public async Task<bool> ChangeStatusAsync(string resultId, ResultStatus status)
         {
-            // Get the attempt
-            var attemptsCollection = _mongoDb.AttemptsDatabase.GetCollection<BsonDocument>("exam_attempts");
-            var attempt = await attemptsCollection.Find(Builders<BsonDocument>.Filter.Eq("_id", attemptId)).FirstOrDefaultAsync();
+            var update = Builders<ExamResult>.Update.Set(r => r.Status, status);
+            
+            if (status == ResultStatus.Calculated) update = update.Set(r => r.CalculatedAt, DateTime.UtcNow);
+            if (status == ResultStatus.Finalized) update = update.Set(r => r.FinalizedAt, DateTime.UtcNow);
+            if (status == ResultStatus.Published) update = update.Set(r => r.PublishedAt, DateTime.UtcNow);
+            if (status == ResultStatus.Calculated && status != ResultStatus.Published) 
+                update = update.Set(r => r.PublishedAt, null); // Unpublish logic
 
-            if (attempt == null)
-            {
-                throw new Exception("Attempt not found");
-            }
-
-            // Get exam details
-            var examId = attempt["ExamId"].AsString;
-            var examsCollection = _mongoDb.ExamsDatabase.GetCollection<BsonDocument>("exams");
-            var exam = await examsCollection.Find(Builders<BsonDocument>.Filter.Eq("_id", examId)).FirstOrDefaultAsync();
-
-            if (exam == null)
-            {
-                throw new Exception("Exam not found");
-            }
-
-            var questionIds = exam["QuestionIds"].AsBsonArray.Select(q => q.AsString).ToList();
-            var answers = attempt["Answers"].AsBsonArray;
-
-            // Get questions
-            var questionsCollection = _mongoDb.QuestionsDatabase.GetCollection<BsonDocument>("questions");
-            var questionsFilter = Builders<BsonDocument>.Filter.In("_id", questionIds);
-            var questions = await questionsCollection.Find(questionsFilter).ToListAsync();
-            var questionDict = questions.ToDictionary(q => q["_id"].AsString, q => q);
-
-            double totalScore = 0;
-            int totalQuestions = questionIds.Count;
-            int correctAnswers = 0;
-
-            // Evaluate each answer
-            var evaluatedAnswers = new List<BsonDocument>();
-            foreach (BsonDocument answer in answers)
-            {
-                var questionId = answer["QuestionId"].AsString;
-                if (!questionDict.ContainsKey(questionId))
-                    continue;
-
-                var question = questionDict[questionId];
-                var questionType = question["Type"].AsInt32;
-                var marks = question["Marks"].ToDouble();
-                var negativeMarks = question.Contains("NegativeMarks") && !question["NegativeMarks"].IsBsonNull 
-                    ? question["NegativeMarks"].ToDouble() 
-                    : 0;
-
-                bool isCorrect = false;
-                double marksAwarded = 0;
-
-                // Type 0 = MCQ (single), Type 1 = Multiple Correct
-                if (questionType == 0) // MCQ
-                {
-                    var correctOptions = question["CorrectOptions"].AsBsonArray;
-                    if (correctOptions.Count > 0)
-                    {
-                        var correctOption = correctOptions[0].AsString;
-                        var selectedOption = answer.Contains("SelectedOption") && !answer["SelectedOption"].IsBsonNull
-                            ? answer["SelectedOption"].AsString
-                            : null;
-
-                        if (selectedOption == correctOption)
-                        {
-                            isCorrect = true;
-                            marksAwarded = marks;
-                            correctAnswers++;
-                        }
-                        else if (!string.IsNullOrEmpty(selectedOption))
-                        {
-                            marksAwarded = -negativeMarks;
-                        }
-                    }
-                }
-                else if (questionType == 1) // Multiple Correct
-                {
-                    var correctOptions = question["CorrectOptions"].AsBsonArray.Select(o => o.AsString).ToHashSet();
-                    var selectedOptions = answer.Contains("SelectedOptions") && !answer["SelectedOptions"].IsBsonNull
-                        ? answer["SelectedOptions"].AsBsonArray.Select(o => o.AsString).ToHashSet()
-                        : new HashSet<string>();
-
-                    if (correctOptions.SetEquals(selectedOptions))
-                    {
-                        isCorrect = true;
-                        marksAwarded = marks;
-                        correctAnswers++;
-                    }
-                    else if (selectedOptions.Count > 0)
-                    {
-                        marksAwarded = -negativeMarks;
-                    }
-                }
-                // For subjective/code - manual evaluation needed
-
-                totalScore += marksAwarded;
-
-                // Update answer with evaluation
-                answer["IsCorrect"] = isCorrect;
-                answer["MarksAwarded"] = marksAwarded;
-                evaluatedAnswers.Add(answer);
-            }
-
-            var totalMarks = exam["TotalMarks"].ToDouble();
-            var passingMarks = exam["PassingMarks"].ToDouble();
-            var percentage = totalMarks > 0 ? (totalScore / totalMarks) * 100 : 0;
-            var result = totalScore >= passingMarks ? "Pass" : "Fail";
-
-            // Update attempt with results
-            var update = Builders<BsonDocument>.Update
-                .Set("Answers", new BsonArray(evaluatedAnswers))
-                .Set("Score", totalScore)
-                .Set("Percentage", percentage)
-                .Set("Result", result)
-                .Set("Status", 3); // 3 = Evaluated
-
-            await attemptsCollection.UpdateOneAsync(
-                Builders<BsonDocument>.Filter.Eq("_id", attemptId),
-                update
-            );
-
-            return new EvaluationResult
-            {
-                AttemptId = attemptId,
-                TotalScore = totalScore,
-                TotalMarks = totalMarks,
-                Percentage = percentage,
-                Result = result,
-                CorrectAnswers = correctAnswers,
-                TotalQuestions = totalQuestions
-            };
+            var res = await _mongoDb.Results.UpdateOneAsync(r => r.Id == resultId, update);
+            return res.ModifiedCount > 0;
         }
-    }
 
-    public class EvaluationResult
-    {
-        public string AttemptId { get; set; } = string.Empty;
-        public double TotalScore { get; set; }
-        public double TotalMarks { get; set; }
-        public double Percentage { get; set; }
-        public string Result { get; set; } = string.Empty;
-        public int CorrectAnswers { get; set; }
-        public int TotalQuestions { get; set; }
+        public async Task<bool> BulkPublishAsync(List<string> resultIds)
+        {
+            var update = Builders<ExamResult>.Update
+                .Set(r => r.Status, ResultStatus.Published)
+                .Set(r => r.PublishedAt, DateTime.UtcNow);
+            var res = await _mongoDb.Results.UpdateManyAsync(r => resultIds.Contains(r.Id), update);
+            return res.ModifiedCount > 0;
+        }
+
+        // MANUAL GRADING
+        public async Task<bool> GradeQuestionAsync(string resultId, string questionId, double score, string evaluatorId, string? overrideReason = null)
+        {
+            var result = await GetResultByIdAsync(resultId);
+            if (result == null) return false;
+
+            var q = result.Breakdown.FirstOrDefault(b => b.QuestionId == questionId);
+            if (q == null) return false;
+
+            q.Score = score;
+            q.IsCorrect = score > 0;
+            q.NeedsManualGrading = false;
+            q.EvaluatorId = evaluatorId;
+            if (overrideReason != null) q.OverrideReason = overrideReason;
+
+            // Recalculate Totals
+            result.TotalScore = result.Breakdown.Sum(x => x.Score);
+            result.IsPassed = result.TotalScore >= result.PassingScore;
+
+            var dbResult = await _mongoDb.Results.ReplaceOneAsync(r => r.Id == resultId, result);
+            return dbResult.ModifiedCount > 0;
+        }
+
+        // ==========================================
+        // 2. CROSS-ENTITY QUERIES
+        // ==========================================
+        public async Task<List<ExamResult>> GetResultsByUserAsync(string userId) =>
+            await _mongoDb.Results.Find(r => r.UserId == userId).ToListAsync();
+
+        public async Task<List<ExamResult>> GetResultsByExamAsync(string examId) =>
+            await _mongoDb.Results.Find(r => r.ExamId == examId).ToListAsync();
+
+        public async Task<ExamResult?> GetResultByAttemptAsync(string attemptId) =>
+            await _mongoDb.Results.Find(r => r.AttemptId == attemptId).FirstOrDefaultAsync();
+
+        // ==========================================
+        // 3. CERTIFICATES
+        // ==========================================
+        public async Task<Certificate> GenerateCertificateAsync(string resultId)
+        {
+            var result = await GetResultByIdAsync(resultId);
+            if (result == null || !result.IsPassed) throw new Exception("Result not found or exam failed.");
+
+            var cert = new Certificate
+            {
+                ResultId = resultId,
+                UserId = result.UserId,
+                ExamId = result.ExamId,
+                CertificateUrl = $"https://s3.bucket/certs/{resultId}.pdf" // Mock URL
+            };
+
+            await _mongoDb.Certificates.InsertOneAsync(cert);
+            return cert;
+        }
+
+        public async Task<List<Certificate>> GetAllCertificatesAsync() => 
+            await _mongoDb.Certificates.Find(_ => true).ToListAsync();
+
+        public async Task<Certificate?> GetCertificateByIdAsync(string certId) => 
+            await _mongoDb.Certificates.Find(c => c.Id == certId).FirstOrDefaultAsync();
+
+        public async Task<List<Certificate>> GetCertificatesByUserAsync(string userId) => 
+            await _mongoDb.Certificates.Find(c => c.UserId == userId).ToListAsync();
+
+        public async Task<Certificate?> VerifyCertificateAsync(string code) => 
+            await _mongoDb.Certificates.Find(c => c.VerificationCode == code).FirstOrDefaultAsync();
     }
 }
