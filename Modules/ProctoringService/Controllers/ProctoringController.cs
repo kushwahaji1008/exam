@@ -5,8 +5,9 @@ using ProctoringService.Services;
 
 namespace ProctoringService.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/proctoring")]
+    [Route("api/v{version:apiVersion}/proctoring")]
     public class ProctoringController : ControllerBase
     {
         private readonly ProctoringManagementService _proctoringService;

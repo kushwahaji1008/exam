@@ -5,8 +5,9 @@ using NotificationService.Services;
 
 namespace NotificationService.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/notifications")]
+    [Route("api/v{version:apiVersion}/notifications")]
     public class NotificationsController : ControllerBase
     {
         private readonly NotificationManagementService _notificationService;

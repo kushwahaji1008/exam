@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -25,6 +26,7 @@ builder.Services.AddApiVersioning(options =>
     options.DefaultApiVersion = new ApiVersion(1, 0);   // default v1
     options.AssumeDefaultVersionWhenUnspecified = true; // agar client version na de to default use ho
     options.ReportApiVersions = true;                   // response headers me supported versions show kare
+    options.ApiVersionReader = new UrlSegmentApiVersionReader();
 });
 
 builder.Services.AddVersionedApiExplorer(options =>

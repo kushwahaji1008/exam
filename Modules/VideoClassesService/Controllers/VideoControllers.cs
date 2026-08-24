@@ -5,8 +5,9 @@ using VideoClassesService.Services;
 
 namespace VideoClassesService.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/videos/courses")]
+    [Route("api/v{version:apiVersion}/videos/courses")]
     public class VideosController : ControllerBase
     {
         private readonly CourseManagementService _courseService;
@@ -135,8 +136,9 @@ namespace VideoClassesService.Controllers
         }
     }
 
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/videos/lessons")]
+    [Route("api/v{version:apiVersion}/videos/lessons")]
     public class LessonsController : ControllerBase
     {
         private readonly CourseManagementService _courseService;
@@ -264,8 +266,9 @@ namespace VideoClassesService.Controllers
         }
     }
 
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/videos/progress")]
+    [Route("api/v{version:apiVersion}/videos/progress")]
     public class ProgressController : ControllerBase
     {
         private readonly ProgressTrackingService _progressService;

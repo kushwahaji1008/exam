@@ -5,8 +5,9 @@ using VideoClassesService.Services;
 
 namespace VideoClassesService.Controllers
 {
+    [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/videos/live")]
+    [Route("api/v{version:apiVersion}/videos/live")]
     public class LiveClassController : ControllerBase
     {
         private readonly LiveClassService _liveClassService;
