@@ -43,6 +43,7 @@ namespace AuthService.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastLoginAt { get; set; }
 
+        public bool IsApproved { get; set; } = false;
         public bool IsActive { get; set; } = true;
         public bool IsEmailVerified { get; set; } = false;
         public bool IsPhoneVerified { get; set; } = false;
@@ -233,7 +234,6 @@ namespace AuthService.Models
 
     public class UserDto
     {
-        public string Id { get; set; } = string.Empty;
         public string UserId { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string UserName { get; set; } = string.Empty;
@@ -271,7 +271,7 @@ namespace AuthService.Models
     public class CreateUserAdminRequest
     {
         [Required, EmailAddress] public string Email { get; set; } = string.Empty;
-        
+
         [Required] public string Password { get; set; } = string.Empty;
         [Required] public string FullName { get; set; } = string.Empty;
         public UserRole Role { get; set; } = UserRole.Student;

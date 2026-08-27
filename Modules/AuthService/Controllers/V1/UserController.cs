@@ -171,7 +171,8 @@ namespace AuthService.Controllers.V1
             if (sessions == null) return NotFound(new { message = "User not found" });
 
             // Returning safe session DTOs without raw Refresh Tokens
-            var safeSessions = sessions.Select(s => new {
+            var safeSessions = sessions.Select(s => new
+            {
                 id = s.SessionId,
                 ip = s.IpAddress,
                 device = s.DeviceInfo,
@@ -189,6 +190,22 @@ namespace AuthService.Controllers.V1
             if (activities == null) return NotFound(new { message = "User not found or no logs available" });
 
             return Ok(new { activities });
+        }
+
+        // for administration only 
+
+        [HttpPost("{userId}/approve")]
+        [Authorize(Roles = "1,2,Admin,SuperAdmin")] // Sirf Admin ya SuperAdmin isko call kar payenge
+        public async Task<IActionResult> ApproveUser(string userId)
+        {
+            var success = await _userService.ApproveUserAsync(userId);
+
+            if (!success)
+            {
+                return BadRequest(new { message = "Failed to approve user. User might not exist, is deleted, or is already approved." });
+            }
+
+            return Ok(new { message = "User account approved successfully. They can now login." });
         }
     }
 }

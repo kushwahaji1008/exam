@@ -26,6 +26,12 @@ namespace AuthService.Services
         // ==========================================
         public async Task<(bool Success, string Message)> RegisterAsync(RegisterRequest request)
         {
+            // 1. Block Admin and SuperAdmin Registration
+            if (request.Role == UserRole.Admin || request.Role == UserRole.SuperAdmin)
+            {
+                return (false, "Security Policy: You cannot self-register as an Admin or SuperAdmin.");
+            }
+
             var existingUser = await _mongoDb.Users.Find(u => u.Email == request.Email && !u.IsDeleted).FirstOrDefaultAsync();
 
             if (existingUser != null && existingUser.IsEmailVerified)
@@ -35,6 +41,9 @@ namespace AuthService.Services
             DateTime expiryTime = DateTime.UtcNow.AddMinutes(10);
             string hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
+            // 2. Approval Logic: Students are auto-approved, Teachers need Admin approval
+            bool isApproved = (request.Role == UserRole.Student);
+
             if (existingUser != null && !existingUser.IsEmailVerified)
             {
                 var update = Builders<User>.Update
@@ -43,14 +52,34 @@ namespace AuthService.Services
                     .Set(u => u.PasswordHash, hashedPassword)
                     .Set(u => u.FullName, request.FullName)
                     .Set(u => u.Role, request.Role)
-                    .Set(u => u.Phone, request.Phone);
+                    .Set(u => u.Phone, request.Phone)
+                    .Set(u => u.IsApproved, isApproved);
 
-                await _mongoDb.Users.UpdateOneAsync(u => u.Id == existingUser.Id, update);
+                await _mongoDb.Users.UpdateOneAsync(u => u.UserId == existingUser.UserId, update);
             }
             else
             {
+                // 3. Generate a Unique 9-Digit User ID for Frontend exposure
+                string uniqueNineDigitId = string.Empty;
+                bool isIdUnique = false;
+                var random = new Random();
+
+                while (!isIdUnique)
+                {
+                    // Generate number between 100000000 and 999999999
+                    uniqueNineDigitId = random.Next(100000000, 999999999).ToString();
+
+                    // Check database to ensure no collision
+                    var exists = await _mongoDb.Users.Find(u => u.UserId == uniqueNineDigitId).AnyAsync();
+                    if (!exists)
+                    {
+                        isIdUnique = true;
+                    }
+                }
+
                 var user = new User
                 {
+                    UserId = uniqueNineDigitId, // <-- The 9-digit Public ID assigned here
                     Email = request.Email,
                     UserName = request.Email.Split('@')[0],
                     PasswordHash = hashedPassword,
@@ -60,6 +89,7 @@ namespace AuthService.Services
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     IsEmailVerified = false,
+                    IsApproved = isApproved,
                     Otp = generatedOtp,
                     OtpExpiry = expiryTime,
                     Sessions = new List<ActiveSession>()
@@ -68,7 +98,13 @@ namespace AuthService.Services
             }
 
             await SendOtpEmailAsync(request.Email, generatedOtp);
-            return (true, "Registration initiated. Please check your email for the OTP.");
+
+            // 4. Custom Response Message based on Role
+            string responseMessage = request.Role == UserRole.Teacher
+                ? "Registration initiated. Please check your email for the OTP. Note: Teacher accounts require admin approval before full access."
+                : "Registration initiated. Please check your email for the OTP.";
+
+            return (true, responseMessage);
         }
 
         public async Task<(bool Success, string Message, string Token, string RefreshToken, UserDto? User)> VerifyOtpAsync(VerifyOtpRequest request)
@@ -91,7 +127,7 @@ namespace AuthService.Services
                 .Set(u => u.LastLoginAt, DateTime.UtcNow)
                 .Set(u => u.Sessions, activeSessions);
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
             string token = GenerateJwtToken(user);
             return (true, "Verification successful.", token, newSession.RefreshToken, ToUserDto(user));
@@ -114,6 +150,12 @@ namespace AuthService.Services
             if (!user.IsActive) return (false, "Account is deactivated. Contact support.", string.Empty, string.Empty, null);
             if (user.IsLocked && user.LockoutEnd > DateTime.UtcNow) return (false, $"Account locked until {user.LockoutEnd}. Try again later.", string.Empty, string.Empty, null);
 
+            // 👇 NAYA CODE: Check if the user is approved by Admin (Important for Teachers)
+            if (!user.IsApproved)
+            {
+                return (false, "Your account is pending admin approval. You can login once an admin approves your profile.", string.Empty, string.Empty, null);
+            }
+
             if (user.MfaEnabled)
             {
                 // In a real flow, return a temporary token used ONLY for MFA challenge endpoint
@@ -131,16 +173,17 @@ namespace AuthService.Services
                 .Set(u => u.LockoutEnd, null)
                 .Set(u => u.Sessions, activeSessions);
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
-            string token = GenerateJwtToken(user);
+            string token = GenerateJwtToken(user); // Make sure this uses user.UserId (9-digit) and NOT user.UserId
+
             return (true, "Login successful", token, newSession.RefreshToken, ToUserDto(user));
         }
 
         public async Task<bool> LogoutAsync(string userId)
         {
             var update = Builders<User>.Update.Set(u => u.Sessions, new List<ActiveSession>());
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -155,7 +198,7 @@ namespace AuthService.Services
 
             string generatedOtp = GenerateOtp();
             var update = Builders<User>.Update.Set(u => u.Otp, generatedOtp).Set(u => u.OtpExpiry, DateTime.UtcNow.AddMinutes(10));
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
             await SendOtpEmailAsync(email, generatedOtp, isPasswordReset ? "Password Reset Verification" : "Verify Your Account");
             return (true, "OTP sent successfully. Please check your email.");
@@ -175,19 +218,19 @@ namespace AuthService.Services
                 .Set(u => u.OtpExpiry, null)
                 .Set(u => u.Sessions, new List<ActiveSession>());
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
             return (true, "Password has been reset successfully. You can now log in.");
         }
 
         public async Task<(bool Success, string Message)> ChangePasswordAsync(string userId, ChangePasswordRequest request)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return (false, "User not found.");
             if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash)) return (false, "Incorrect current password.");
 
             string hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             var update = Builders<User>.Update.Set(u => u.PasswordHash, hashedPassword);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
             return (true, "Password changed successfully.");
         }
 
@@ -208,7 +251,7 @@ namespace AuthService.Services
             activeSessions.Add(newSession);
 
             var update = Builders<User>.Update.Set(u => u.Sessions, activeSessions);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
             return (true, "Token refreshed successfully", newJwtToken, newSession.RefreshToken, ToUserDto(user));
         }
@@ -218,7 +261,7 @@ namespace AuthService.Services
         // ==========================================
         public async Task<UserDto?> GetUserByIdAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             return user != null ? ToUserDto(user) : null;
         }
 
@@ -237,14 +280,14 @@ namespace AuthService.Services
                 .Set(u => u.DateOfBirth, request.DateOfBirth)
                 .Set(u => u.ProfilePicture, request.ProfilePicture);
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> DeleteUserAsync(string userId)
         {
             var update = Builders<User>.Update.Set(u => u.IsDeleted, true).Set(u => u.IsActive, false);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -263,7 +306,7 @@ namespace AuthService.Services
         // ==========================================
         public async Task<(bool Success, string Message)> ChangeEmailAsync(string userId, ChangeEmailRequest request)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return (false, "User not found");
             if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash)) return (false, "Incorrect password");
 
@@ -277,7 +320,7 @@ namespace AuthService.Services
                 .Set(u => u.Otp, generatedOtp)
                 .Set(u => u.OtpExpiry, DateTime.UtcNow.AddMinutes(15));
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
             await SendOtpEmailAsync(request.NewEmail, generatedOtp, "Verify Your New Email");
 
             return (true, "Email updated. Please check your new email for a verification code.");
@@ -292,7 +335,7 @@ namespace AuthService.Services
                 .Set(u => u.Otp, generatedOtp)
                 .Set(u => u.OtpExpiry, DateTime.UtcNow.AddMinutes(10));
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
 
             // TODO: Integrate SMS provider (Twilio/AWS SNS) here
             // await _smsService.SendSmsAsync(request.PhoneNumber, $"Your verification code is {generatedOtp}");
@@ -302,12 +345,12 @@ namespace AuthService.Services
 
         public async Task<(bool Success, string Message)> VerifyPhoneAsync(string userId, string otp)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || user.Otp != otp || DateTime.UtcNow > user.OtpExpiry)
                 return (false, "Invalid or expired OTP");
 
             var update = Builders<User>.Update.Set(u => u.IsPhoneVerified, true).Set(u => u.Otp, null).Set(u => u.OtpExpiry, null);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
 
             return (true, "Phone verified successfully");
         }
@@ -315,7 +358,7 @@ namespace AuthService.Services
         public async Task<bool> RemovePhoneAsync(string userId)
         {
             var update = Builders<User>.Update.Set(u => u.Phone, null).Set(u => u.IsPhoneVerified, false);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -336,14 +379,14 @@ namespace AuthService.Services
             string mockQrUrl = $"otpauth://totp/ExamApp:{userId}?secret={mockSecret}&issuer=ExamApp";
 
             var update = Builders<User>.Update.Set(u => u.MfaSecret, mockSecret);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
 
             return (true, "MFA setup initialized", mockSecret, mockQrUrl);
         }
 
         public async Task<(bool Success, string Message)> VerifyAndEnableMfaAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || string.IsNullOrEmpty(user.MfaSecret)) return (false, "MFA setup not initialized");
 
             // TODO: Validate TOTP code using Otp.NET
@@ -356,7 +399,7 @@ namespace AuthService.Services
                 .Set(u => u.MfaEnabled, true)
                 .Set(u => u.MfaRecoveryCodes, recoveryCodes);
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return (true, "MFA enabled successfully");
         }
 
@@ -367,18 +410,18 @@ namespace AuthService.Services
                 .Set(u => u.MfaSecret, null)
                 .Set(u => u.MfaRecoveryCodes, new List<string>());
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0 ? (true, "MFA disabled") : (false, "Failed to disable MFA");
         }
 
         // public async Task<List<string>?> GetRecoveryCodesAsync(string userId)
         // {
-        //     var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+        //     var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
         //     return user?.MfaRecoveryCodes;
         // }
         public async Task<object?> GetMfaInfoAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return null;
 
             return new
@@ -390,13 +433,13 @@ namespace AuthService.Services
 
         public async Task<bool> GetMfaStatusAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             return user?.MfaEnabled ?? false;
         }
 
         public async Task<(bool Success, string Message, string? Secret, string? QrCodeUrl)> SetupMfaAsync(string userId, string method)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return (false, "User not found", null, null);
             if (user.MfaEnabled) return (false, "MFA is already enabled", null, null);
 
@@ -407,14 +450,14 @@ namespace AuthService.Services
             string qrCodeUrl = $"otpauth://totp/ExamApp:{user.Email}?secret={secret}&issuer=ExamApp";
 
             var update = Builders<User>.Update.Set(u => u.MfaSecret, secret);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
 
             return (true, "MFA setup initialized", secret, qrCodeUrl);
         }
 
         public async Task<(bool Success, string Message)> VerifyMfaSetupAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || string.IsNullOrEmpty(user.MfaSecret)) return (false, "MFA setup not initialized");
 
             // TODO: Use Otp.NET to validate the TOTP code. 
@@ -426,7 +469,7 @@ namespace AuthService.Services
 
         public async Task<(bool Success, string Message)> EnableMfaAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || string.IsNullOrEmpty(user.MfaSecret)) return (false, "MFA setup not initialized");
 
             // TODO: Use Otp.NET to validate the TOTP code.
@@ -438,13 +481,13 @@ namespace AuthService.Services
                 .Set(u => u.MfaEnabled, true)
                 .Set(u => u.MfaRecoveryCodes, recoveryCodes);
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return (true, "MFA enabled successfully");
         }
 
         public async Task<(bool Success, string Message)> DisableMfaAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return (false, "User not found");
             if (!user.MfaEnabled) return (false, "MFA is not enabled");
 
@@ -457,13 +500,13 @@ namespace AuthService.Services
                 .Set(u => u.MfaSecret, null)
                 .Set(u => u.MfaRecoveryCodes, new List<string>());
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return (true, "MFA disabled successfully");
         }
 
         public async Task<(bool Success, string Message, string Token, string RefreshToken, UserDto? User)> MfaChallengeAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || !user.MfaEnabled) return (false, "Invalid request or MFA not enabled", string.Empty, string.Empty, null);
 
             // TODO: Use Otp.NET to validate the TOTP code
@@ -475,7 +518,7 @@ namespace AuthService.Services
             activeSessions.Add(newSession);
 
             var update = Builders<User>.Update.Set(u => u.Sessions, activeSessions);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
             string token = GenerateJwtToken(user);
             return (true, "Login successful", token, newSession.RefreshToken, ToUserDto(user));
@@ -483,26 +526,26 @@ namespace AuthService.Services
 
         public async Task<List<string>?> GetRecoveryCodesAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || !user.MfaEnabled) return null;
             return user.MfaRecoveryCodes;
         }
 
         public async Task<(bool Success, string Message, List<string>? Codes)> RegenerateRecoveryCodesAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || !user.MfaEnabled) return (false, "MFA is not enabled", null);
 
             var newCodes = GenerateRecoveryCodes();
             var update = Builders<User>.Update.Set(u => u.MfaRecoveryCodes, newCodes);
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
 
             return (true, "Recovery codes regenerated successfully", newCodes);
         }
 
         public async Task<(bool Success, string Message, string Token, string RefreshToken, UserDto? User)> VerifyRecoveryCodeAsync(string userId, string code)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null || !user.MfaEnabled) return (false, "Invalid request or MFA not enabled", string.Empty, string.Empty, null);
 
             if (!user.MfaRecoveryCodes.Contains(code))
@@ -519,7 +562,7 @@ namespace AuthService.Services
                 .Set(u => u.MfaRecoveryCodes, updatedCodes)
                 .Set(u => u.Sessions, activeSessions);
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
 
             string token = GenerateJwtToken(user);
             return (true, "Login successful using recovery code", token, newSession.RefreshToken, ToUserDto(user));
@@ -541,33 +584,33 @@ namespace AuthService.Services
         // ==========================================
         public async Task<List<ActiveSession>> GetUserSessionsAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             return user != null ? CleanupExpiredSessions(user.Sessions) : new List<ActiveSession>();
         }
 
         public async Task<bool> RevokeSessionAsync(string userId, string sessionId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return false;
 
             var sessions = user.Sessions;
             sessions.RemoveAll(s => s.SessionId == sessionId);
 
             var update = Builders<User>.Update.Set(u => u.Sessions, sessions);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> RevokeAllOtherSessionsAsync(string userId, string currentSessionId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return false;
 
             var currentSession = user.Sessions.FirstOrDefault(s => s.SessionId == currentSessionId);
             var sessionsToKeep = currentSession != null ? new List<ActiveSession> { currentSession } : new List<ActiveSession>();
 
             var update = Builders<User>.Update.Set(u => u.Sessions, sessionsToKeep);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -585,12 +628,12 @@ namespace AuthService.Services
 
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+                new Claim(JwtRegisteredClaimNames.Sub, user.UserId),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.FullName),
                 new Claim("role", ((int)user.Role).ToString()),
                 new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim("userId", user.Id),
+                new Claim("userId", user.UserId),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
@@ -659,7 +702,7 @@ namespace AuthService.Services
                 return false;
 
             var user = await _mongoDb.Users
-                .Find(u => u.Id == userId && !u.IsDeleted)
+                .Find(u => u.UserId == userId && !u.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (user == null || user.Sessions == null)
@@ -679,7 +722,7 @@ namespace AuthService.Services
                 .Set(u => u.Sessions, sessions);
 
             var result = await _mongoDb.Users.UpdateOneAsync(
-                u => u.Id == userId,
+                u => u.UserId == userId,
                 update
             );
 
@@ -695,7 +738,7 @@ namespace AuthService.Services
                 .Set(u => u.Sessions, new List<ActiveSession>());
 
             var result = await _mongoDb.Users.UpdateOneAsync(
-                u => u.Id == userId && !u.IsDeleted,
+                u => u.UserId == userId && !u.IsDeleted,
                 update
             );
 
@@ -708,7 +751,7 @@ namespace AuthService.Services
                 return false;
 
             var user = await _mongoDb.Users
-                .Find(u => u.Id == userId && !u.IsDeleted)
+                .Find(u => u.UserId == userId && !u.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (user == null)
@@ -751,7 +794,7 @@ namespace AuthService.Services
             var update = Builders<User>.Update.Combine(updates);
 
             var result = await _mongoDb.Users.UpdateOneAsync(
-                u => u.Id == userId && !u.IsDeleted,
+                u => u.UserId == userId && !u.IsDeleted,
                 update
             );
 
@@ -761,7 +804,7 @@ namespace AuthService.Services
         public async Task<object?> GetSecuritySettingsAsync(string userId)
         {
             var user = await _mongoDb.Users
-                .Find(u => u.Id == userId && !u.IsDeleted)
+                .Find(u => u.UserId == userId && !u.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (user == null)
@@ -783,7 +826,7 @@ namespace AuthService.Services
             int pageSize = 10)
         {
             var user = await _mongoDb.Users
-                .Find(u => u.Id == userId && !u.IsDeleted)
+                .Find(u => u.UserId == userId && !u.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (user == null)
@@ -816,7 +859,7 @@ namespace AuthService.Services
                 return null;
 
             var user = await _mongoDb.Users
-                .Find(u => u.Id == userId && !u.IsDeleted)
+                .Find(u => u.UserId == userId && !u.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (user == null || user.Sessions == null)
@@ -867,15 +910,16 @@ namespace AuthService.Services
                 update = update.Set(u => u.IsLocked, true).Set(u => u.LockoutEnd, DateTime.UtcNow.AddMinutes(15));
             }
 
-            await _mongoDb.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, update);
         }
 
         public static UserDto ToUserDto(User user)
         {
             return new UserDto
             {
-                Id = user.Id,
+                UserId = user.UserId,
                 Email = user.Email,
+                UserName = user.UserName,
                 FullName = user.FullName,
                 Phone = user.Phone,
                 Role = user.Role,

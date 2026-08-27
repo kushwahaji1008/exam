@@ -17,7 +17,7 @@ namespace AuthService.Services
         // ==========================================
         // 1. CORE CRUD OPERATIONS
         // ==========================================
-        
+
         public async Task<object> GetAllUsersAsync(UserFilterRequest filter)
         {
             var builder = Builders<User>.Filter;
@@ -43,7 +43,7 @@ namespace AuthService.Services
             }
 
             var totalRecords = await _mongoDb.Users.CountDocumentsAsync(mongoFilter);
-            
+
             var users = await _mongoDb.Users.Find(mongoFilter)
                 .Skip((filter.Page - 1) * filter.PageSize)
                 .Limit(filter.PageSize)
@@ -66,8 +66,20 @@ namespace AuthService.Services
             var exists = await _mongoDb.Users.Find(u => u.Email == request.Email && !u.IsDeleted).AnyAsync();
             if (exists) return (false, "User with this email already exists.", null);
 
+            // 👇 1. Generate 9-digit ID
+            string uniqueNineDigitId = string.Empty;
+            bool isIdUnique = false;
+            var random = new Random();
+            while (!isIdUnique)
+            {
+                uniqueNineDigitId = random.Next(100000000, 999999999).ToString();
+                var idExists = await _mongoDb.Users.Find(u => u.UserId == uniqueNineDigitId).AnyAsync();
+                if (!idExists) isIdUnique = true;
+            }
+
             var user = new User
             {
+                UserId = uniqueNineDigitId, // ✅ Assigned here
                 Email = request.Email,
                 UserName = request.Email.Split('@')[0],
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
@@ -75,20 +87,23 @@ namespace AuthService.Services
                 Role = request.Role,
                 IsActive = request.IsActive,
                 IsEmailVerified = request.IsEmailVerified,
+                IsApproved = true, // ✅ Admin-created users are automatically approved
                 CreatedAt = DateTime.UtcNow,
                 Sessions = new List<ActiveSession>()
             };
 
             await _mongoDb.Users.InsertOneAsync(user);
-            return (true, "User created successfully.", user.Id);
+
+            // 👇 2. Return 9-digit ID instead of internal DB user.Id
+            return (true, "User created successfully.", user.UserId);
         }
 
         public async Task<User?> GetUserByIdAsync(string userId)
         {
             // Returning the full User object for Admin view. 
             // In a production app, you might map this to a detailed AdminUserDto to hide PasswordHash.
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
-            if (user != null) 
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            if (user != null)
             {
                 user.PasswordHash = "HIDDEN"; // Sanitize before returning to controller
             }
@@ -103,7 +118,7 @@ namespace AuthService.Services
                 .Set(u => u.IsActive, request.IsActive)
                 .Set(u => u.IsEmailVerified, request.IsEmailVerified);
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -111,14 +126,14 @@ namespace AuthService.Services
         {
             // Note: True JSON Patch requires Microsoft.AspNetCore.JsonPatch.
             // This is a simplified approach assuming a JSON object dictionary payload.
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return false;
 
             try
             {
                 var json = JsonSerializer.Serialize(request);
                 var patchDict = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                
+
                 if (patchDict == null || !patchDict.Any()) return false;
 
                 var updateBuilder = Builders<User>.Update;
@@ -126,9 +141,12 @@ namespace AuthService.Services
 
                 foreach (var kvp in patchDict)
                 {
-                    // Prevent modifying critical system fields
-                    if (kvp.Key.Equals("Id", StringComparison.OrdinalIgnoreCase) || 
-                        kvp.Key.Equals("PasswordHash", StringComparison.OrdinalIgnoreCase)) 
+                    // 👇 YAHAN CHANGES HUE HAIN: Prevent modifying critical system fields
+                    if (kvp.Key.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Equals("UserId", StringComparison.OrdinalIgnoreCase) ||      // Custom 9-digit ID ko protect kiya
+                        kvp.Key.Equals("Role", StringComparison.OrdinalIgnoreCase) ||        // Privilege escalation (Admin banne) se roka
+                        kvp.Key.Equals("IsApproved", StringComparison.OrdinalIgnoreCase) ||  // Auto-approval ko block kiya
+                        kvp.Key.Equals("PasswordHash", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     updates.Add(updateBuilder.Set(kvp.Key, kvp.Value));
@@ -137,16 +155,28 @@ namespace AuthService.Services
                 if (updates.Any())
                 {
                     var combinedUpdate = updateBuilder.Combine(updates);
-                    var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, combinedUpdate);
+                    var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, combinedUpdate);
                     return result.ModifiedCount > 0;
                 }
-                
+
                 return false;
             }
             catch
             {
                 return false;
             }
+        }
+        public async Task<bool> ApproveUserAsync(string userId)
+        {
+            var update = Builders<User>.Update.Set(u => u.IsApproved, true);
+
+            // Check if user exists, is not deleted, and is not already approved
+            var result = await _mongoDb.Users.UpdateOneAsync(
+                u => u.UserId == userId && !u.IsDeleted && !u.IsApproved,
+                update
+            );
+
+            return result.ModifiedCount > 0;
         }
 
         public async Task<bool> DeleteUserAsync(string userId)
@@ -157,7 +187,7 @@ namespace AuthService.Services
                 .Set(u => u.IsActive, false)
                 .Set(u => u.Sessions, new List<ActiveSession>()); // Kill active sessions
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -168,14 +198,14 @@ namespace AuthService.Services
         public async Task<bool> SetUserActiveStatusAsync(string userId, bool isActive)
         {
             var update = Builders<User>.Update.Set(u => u.IsActive, isActive);
-            
+
             // If deactivating, also kill all active sessions
             if (!isActive)
             {
                 update = update.Set(u => u.Sessions, new List<ActiveSession>());
             }
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -196,7 +226,7 @@ namespace AuthService.Services
                 update = update.Set(u => u.LockoutEnd, null);
             }
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -210,7 +240,7 @@ namespace AuthService.Services
                 .Set(u => u.RequiresPasswordReset, true)
                 .Set(u => u.Sessions, new List<ActiveSession>()); // Log them out so they are forced to reset
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -221,7 +251,7 @@ namespace AuthService.Services
                 .Set(u => u.Otp, null)
                 .Set(u => u.OtpExpiry, null);
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -232,14 +262,14 @@ namespace AuthService.Services
                 .Set(u => u.MfaSecret, null)
                 .Set(u => u.MfaRecoveryCodes, new List<string>());
 
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> RevokeAllUserSessionsAsync(string userId)
         {
             var update = Builders<User>.Update.Set(u => u.Sessions, new List<ActiveSession>());
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
+            var result = await _mongoDb.Users.UpdateOneAsync(u => u.UserId == userId && !u.IsDeleted, update);
             return result.ModifiedCount > 0;
         }
 
@@ -249,7 +279,7 @@ namespace AuthService.Services
 
         public async Task<List<ActiveSession>?> GetUserSessionsAsync(string userId)
         {
-            var user = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
             if (user == null) return null;
 
             // Return only sessions that have not expired
@@ -258,7 +288,7 @@ namespace AuthService.Services
 
         public async Task<object?> GetUserActivityLogsAsync(string userId)
         {
-            var userExists = await _mongoDb.Users.Find(u => u.Id == userId && !u.IsDeleted).AnyAsync();
+            var userExists = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).AnyAsync();
             if (!userExists) return null;
 
             // Note: In a full production app, you would query an 'AuditLogs' collection here.
