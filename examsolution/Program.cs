@@ -150,6 +150,7 @@ builder.Services.AddTransient<AuthService.Services.IEmailService, AuthService.Se
 builder.Services.AddTransient<AuthService.Services.IPhoneService, AuthService.Services.PhoneService>();
 builder.Services.AddScoped<AuthService.Services.MongoDbService>();
 builder.Services.AddScoped<AuthService.Services.AuthenticationService>();
+builder.Services.AddScoped<AuthService.Services.UserService>();
 
 // --- ExamService ---
 builder.Services.AddScoped<ExamService.Services.MongoDbService>();
