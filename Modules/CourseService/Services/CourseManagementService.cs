@@ -20,10 +20,12 @@ namespace CourseService.Services
         {
             var course = new Course
             {
+                // 👇 YAHAN CHANGE HUA HAI: Auto-generate secure ID instead of trusting frontend
+                CourseId = $"CRS-{new Random().Next(100000, 999999)}", 
                 Title = request.Title,
                 Description = request.Description,
                 Level = request.Level,
-                Price = request.Price,
+                CoinPrice = request.CoinPrice, // Updated to CoinPrice
                 CreatedBy = userId,
                 InstructorIds = new List<string> { userId } // Creator is default instructor
             };
@@ -36,18 +38,18 @@ namespace CourseService.Services
             await _mongoDb.Courses.Find(_ => true).SortByDescending(c => c.CreatedAt).ToListAsync();
 
         public async Task<Course?> GetCourseByIdAsync(string courseId) => 
-            await _mongoDb.Courses.Find(c => c.Id == courseId).FirstOrDefaultAsync();
+            await _mongoDb.Courses.Find(c => c.CourseId == courseId).FirstOrDefaultAsync();
 
         public async Task<bool> DeleteCourseAsync(string courseId)
         {
-            var result = await _mongoDb.Courses.DeleteOneAsync(c => c.Id == courseId);
+            var result = await _mongoDb.Courses.DeleteOneAsync(c => c.CourseId == courseId);
             return result.DeletedCount > 0;
         }
 
         public async Task<bool> ChangeCourseStatusAsync(string courseId, CourseStatus status)
         {
             var update = Builders<Course>.Update.Set(c => c.Status, status).Set(c => c.UpdatedAt, DateTime.UtcNow);
-            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -64,12 +66,20 @@ namespace CourseService.Services
 
                 foreach (var kvp in patchDict)
                 {
-                    if (kvp.Key.Equals("Id", StringComparison.OrdinalIgnoreCase)) continue;
+                    // 👇 YAHAN CHANGE HUA HAI: Strict Security for Patch Endpoint
+                    if (kvp.Key.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Equals("CourseId", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Equals("CreatedBy", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Equals("EnrollmentCount", StringComparison.OrdinalIgnoreCase)) 
+                        continue; // Block these fields from being modified via Patch
+
                     updates.Add(updateBuilder.Set(kvp.Key, kvp.Value));
                 }
 
+                if (!updates.Any()) return false;
+
                 var combinedUpdate = updateBuilder.Combine(updates).Set("UpdatedAt", DateTime.UtcNow);
-                var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, combinedUpdate);
+                var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, combinedUpdate);
                 return result.ModifiedCount > 0;
             }
             catch { return false; }
@@ -90,14 +100,14 @@ namespace CourseService.Services
             };
 
             var update = Builders<Course>.Update.Push(c => c.Sections, newSection);
-            await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return newSection.Id;
         }
 
         public async Task<bool> DeleteSectionAsync(string courseId, string sectionId)
         {
             var update = Builders<Course>.Update.PullFilter(c => c.Sections, s => s.Id == sectionId);
-            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -118,7 +128,7 @@ namespace CourseService.Services
             for (int i = 0; i < orderedSections.Count; i++) orderedSections[i]!.OrderIndex = i;
 
             var update = Builders<Course>.Update.Set(c => c.Sections, orderedSections!);
-            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -143,7 +153,7 @@ namespace CourseService.Services
 
             section.Items.Add(newItem);
             
-            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.Id == courseId, course!);
+            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.CourseId == courseId, course!);
             return result.ModifiedCount > 0 ? newItem.Id : null;
         }
 
@@ -154,7 +164,7 @@ namespace CourseService.Services
             if (section == null) return false;
 
             section.Items.RemoveAll(i => i.Id == itemId);
-            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.Id == courseId, course!);
+            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.CourseId == courseId, course!);
             return result.ModifiedCount > 0;
         }
 
@@ -174,7 +184,7 @@ namespace CourseService.Services
             for (int i = 0; i < orderedItems.Count; i++) orderedItems[i]!.OrderIndex = i;
             section.Items = orderedItems!;
 
-            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.Id == courseId, course!);
+            var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.CourseId == courseId, course!);
             return result.ModifiedCount > 0;
         }
 
@@ -184,14 +194,14 @@ namespace CourseService.Services
         public async Task<bool> AddInstructorAsync(string courseId, string instructorId)
         {
             var update = Builders<Course>.Update.AddToSet(c => c.InstructorIds, instructorId);
-            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> RemoveInstructorAsync(string courseId, string instructorId)
         {
             var update = Builders<Course>.Update.Pull(c => c.InstructorIds, instructorId);
-            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
+            var result = await _mongoDb.Courses.UpdateOneAsync(c => c.CourseId == courseId, update);
             return result.ModifiedCount > 0;
         }
     }

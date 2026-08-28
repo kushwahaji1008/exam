@@ -192,6 +192,16 @@ builder.Services.AddScoped<CourseService.Services.CourseManagementService>();
 builder.Services.AddSingleton<AnalyticsService.Services.MongoDbService>();
 builder.Services.AddScoped<AnalyticsService.Services.AnalyticsManagementService>();
 
+// --- EnrollmentService ---
+builder.Services.AddSingleton<EnrollmentService.Services.MongoDbService>();
+builder.Services.AddScoped<EnrollmentService.Services.EnrollmentManager>();
+builder.Services.AddScoped<EnrollmentService.Clients.WalletServiceClient>();
+
+
+// --- WalletService ---
+builder.Services.AddSingleton<WalletService.Services.MongoDbService>();
+builder.Services.AddScoped<WalletService.Services.WalletManager>();
+
 var app = builder.Build();
 
 app.Use(async (context, next) =>

@@ -21,5 +21,7 @@
     <ProjectReference Include="..\Modules\AnalyticsService\AnalyticsService.csproj" />
     <ProjectReference Include="..\Modules\VideoClassesService\VideoClassesService.csproj" />
     <ProjectReference Include="..\Modules\QuestionBankService\QuestionBankService.csproj" />
+    <ProjectReference Include="..\Modules\EnrollmentService\EnrollmentService.csproj" />
+    <ProjectReference Include="..\Modules\WalletService\WalletService.csproj" />
   </ItemGroup>
 </Project>

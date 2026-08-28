@@ -15,7 +15,7 @@ namespace CourseService.Models.V1
         public string Id { get; set; } = Guid.NewGuid().ToString();
 
         [Required]
-        public string CourseId { get; set; } = string.Empty;
+        public string CourseId { get; set; } = string.Empty; // Backend generated (e.g. CRS-123456)
 
         [Required]
         public string Title { get; set; } = string.Empty;
@@ -25,13 +25,17 @@ namespace CourseService.Models.V1
         public CourseStatus Status { get; set; } = CourseStatus.Draft;
         public CourseLevel Level { get; set; } = CourseLevel.Beginner;
 
-        public decimal Price { get; set; } = 0.0m;
-        public decimal DiscountPrice { get; set; } = 0.0m;
+        // 👇 Changed to CoinPrice and added Range validation
+        [Range(0, 1000000, ErrorMessage = "Price cannot be negative.")]
+        public decimal CoinPrice { get; set; } = 0.0m; 
+        
+        [Range(0, 1000000, ErrorMessage = "Discount Price cannot be negative.")]
+        public decimal DiscountCoinPrice { get; set; } = 0.0m;
         
         public int EnrollmentCount { get; set; } = 0;
 
         [Required]
-        public string CreatedBy { get; set; } = string.Empty; // User ID of creator
+        public string CreatedBy { get; set; } = string.Empty; // 9-Digit User ID
         public List<string> InstructorIds { get; set; } = new();
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -101,10 +105,15 @@ namespace CourseService.Models.V1
 
     public class CreateCourseRequest
     {
-        [Required] public string Title { get; set; } = string.Empty;
+        // ❌ CourseId removed from here! Backend will generate it in CourseManager.cs
+        
+        [Required] 
+        public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public CourseLevel Level { get; set; } = CourseLevel.Beginner;
-        public decimal Price { get; set; } = 0;
+        
+        [Range(0, 1000000, ErrorMessage = "Price cannot be negative.")]
+        public decimal CoinPrice { get; set; } = 0;
     }
 
     public class CreateSectionRequest
