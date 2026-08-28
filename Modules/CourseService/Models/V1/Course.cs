@@ -25,12 +25,12 @@ namespace CourseService.Models.V1
         public CourseStatus Status { get; set; } = CourseStatus.Draft;
         public CourseLevel Level { get; set; } = CourseLevel.Beginner;
 
-        // 👇 Changed to CoinPrice and added Range validation
+        // 👇 Changed to CoursePrice and added Range validation
         [Range(0, 1000000, ErrorMessage = "Price cannot be negative.")]
-        public decimal CoinPrice { get; set; } = 0.0m; 
+        public decimal CoursePrice { get; set; } = 0.0m; 
         
         [Range(0, 1000000, ErrorMessage = "Discount Price cannot be negative.")]
-        public decimal DiscountCoinPrice { get; set; } = 0.0m;
+        public decimal DiscountCoursePrice { get; set; } = 0.0m;
         
         public int EnrollmentCount { get; set; } = 0;
 
@@ -105,7 +105,6 @@ namespace CourseService.Models.V1
 
     public class CreateCourseRequest
     {
-        // ❌ CourseId removed from here! Backend will generate it in CourseManager.cs
         
         [Required] 
         public string Title { get; set; } = string.Empty;
@@ -113,7 +112,7 @@ namespace CourseService.Models.V1
         public CourseLevel Level { get; set; } = CourseLevel.Beginner;
         
         [Range(0, 1000000, ErrorMessage = "Price cannot be negative.")]
-        public decimal CoinPrice { get; set; } = 0;
+        public decimal CoursePrice { get; set; } = 0;
     }
 
     public class CreateSectionRequest

@@ -25,7 +25,7 @@ namespace CourseService.Services
                 Title = request.Title,
                 Description = request.Description,
                 Level = request.Level,
-                CoinPrice = request.CoinPrice, // Updated to CoinPrice
+                CoursePrice = request.CoursePrice, // Updated to CoursePrice
                 CreatedBy = userId,
                 InstructorIds = new List<string> { userId } // Creator is default instructor
             };
