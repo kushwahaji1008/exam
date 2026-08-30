@@ -13,6 +13,7 @@ namespace ExamService.Models
         [BsonId]
         [BsonRepresentation(BsonType.String)]
         public string Id { get; set; } = Guid.NewGuid().ToString();
+        public string ExamId { get; set; } = string.Empty;
 
         public string CourseId { get; set; } = string.Empty;
 
@@ -182,6 +183,7 @@ namespace ExamService.Models
     public class ExamDto
     {
         public string Id { get; set; } = string.Empty;
+        public string ExamId { get; set; } = string.Empty;
         public string CourseId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;

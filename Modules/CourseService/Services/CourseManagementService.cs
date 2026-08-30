@@ -21,7 +21,7 @@ namespace CourseService.Services
             var course = new Course
             {
                 // 👇 YAHAN CHANGE HUA HAI: Auto-generate secure ID instead of trusting frontend
-                CourseId = $"CRS-{new Random().Next(100000, 999999)}", 
+                CourseId = $"{new Random().Next(100000, 999999)}", 
                 Title = request.Title,
                 Description = request.Description,
                 Level = request.Level,

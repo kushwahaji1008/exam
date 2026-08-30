@@ -35,7 +35,7 @@ namespace CourseService.Controllers.V1
         public async Task<IActionResult> CreateCourse([FromBody] CreateCourseRequest request)
         {
             var course = await _courseService.CreateCourseAsync(request, GetCurrentUserId()!);
-            return CreatedAtAction(nameof(GetCourseById), new { courseId = course.Id }, course);
+            return CreatedAtAction(nameof(GetCourseById), new { courseId = course.CourseId }, course);
         }
 
         [HttpGet("{courseId}")]
