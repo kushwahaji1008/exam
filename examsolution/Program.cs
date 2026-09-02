@@ -203,6 +203,12 @@ builder.Services.AddScoped<EnrollmentService.Clients.WalletServiceClient>();
 builder.Services.AddSingleton<WalletService.Services.MongoDbService>();
 builder.Services.AddScoped<WalletService.Services.WalletManager>();
 
+// --- StorageService ---
+
+builder.Services.AddScoped<StorageService.Services.IStorageService>();
+// builder.Services.AddScoped<StorageService.Services.GcsStorageService>();
+builder.Services.AddScoped<StorageService.Services.GoogleDriveStorageService>();
+
 var app = builder.Build();
 
 app.Use(async (context, next) =>

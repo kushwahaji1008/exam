@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Google.Cloud.Storage.V1" Version="4.15.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning" Version="5.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning.ApiExplorer" Version="5.1.0" />
@@ -23,5 +24,6 @@
     <ProjectReference Include="..\Modules\QuestionBankService\QuestionBankService.csproj" />
     <ProjectReference Include="..\Modules\EnrollmentService\EnrollmentService.csproj" />
     <ProjectReference Include="..\Modules\WalletService\WalletService.csproj" />
+    <ProjectReference Include="..\Modules\StorageService\StorageService.csproj" />
   </ItemGroup>
 </Project>

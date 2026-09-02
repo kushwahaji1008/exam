@@ -1,49 +1,68 @@
 using MongoDB.Driver;
 using EnrollmentService.Models;
-using EnrollmentService.Clients;
+using CourseService.Services; 
+using WalletService.Services; 
 
 namespace EnrollmentService.Services
 {
     public class EnrollmentManager
     {
         private readonly IMongoCollection<Enrollment> _enrollments;
-        private readonly WalletServiceClient _walletClient;
+        private readonly WalletManager _walletManager;
+        private readonly CourseManagementService _courseService;
 
-        public EnrollmentManager(MongoDbService mongoDb, WalletServiceClient walletClient)
+        // 👇 YAHAN FIX HUA HAAI: Explicitly bataya gaya hai ki EnrollmentService wala MongoDbService use karna hai
+        public EnrollmentManager(
+            EnrollmentService.Services.MongoDbService mongoDb, 
+            WalletManager walletManager, 
+            CourseManagementService courseService)
         {
             _enrollments = mongoDb.Enrollments;
-            _walletClient = walletClient;
+            _walletManager = walletManager;
+            _courseService = courseService;
         }
 
-        public async Task<(bool Success, string Message)> PurchaseCourseAsync(string userId, string courseId, decimal coursePrice)
+        // 👇 Frontend se 'coursePrice' hataya, ab sirf courseId aayega
+        public async Task<(bool Success, string Message)> PurchaseCourseAsync(string userId, string courseId) 
         {
-            // 1. Check if already active
+            // 1. Direct Call: CourseService se true price nikalein (Hacker proof)
+            var course = await _courseService.GetCourseByIdAsync(courseId);
+            if (course == null) return (false, "Course not found.");
+            
+            decimal truePrice = course.CoursePrice; // Aapke model ke hisaab se CoursePrice use kiya hai
+
+            // 2. Check if already active
             var existing = await _enrollments.Find(e => e.UserId == userId && e.CourseId == courseId).FirstOrDefaultAsync();
             if (existing != null && existing.Status == EnrollmentStatus.Active)
             {
                 return (false, "You already have active access to this course.");
             }
 
-            // 2. Generate a strict Idempotency Key (Format: ENROLL_UserId_CourseId)
-            // Even if the user clicks 10 times, WalletService will only deduct coins ONCE for this exact string.
+            // 3. Generate strict Idempotency Key
             string idempotencyKey = $"ENR_BUY_{userId}_{courseId}";
 
-            // 3. Call WalletService to deduct coins
-            var walletResponse = await _walletClient.DebitCoinsAsync(userId, coursePrice, idempotencyKey, courseId);
+            // 4. Direct Call: WalletManager se coins deduct karein (0 ms delay)
+            var (walletSuccess, walletMessage) = await _walletManager.DebitAsync(
+                userId, 
+                truePrice, 
+                idempotencyKey, 
+                courseId, 
+                "EnrollmentModule"
+            );
 
-            if (!walletResponse.Success)
+            if (!walletSuccess)
             {
-                return (false, walletResponse.Message); // Return "Insufficient balance" directly to user
+                return (false, walletMessage); // "Insufficient balance"
             }
 
-            // 4. Wallet transaction successful, mark course as Active
+            // 5. Wallet deduction successful, mark course as Active
             if (existing == null)
             {
                 var newEnrollment = new Enrollment
                 {
                     UserId = userId,
                     CourseId = courseId,
-                    CoinsPaid = coursePrice,
+                    CoinsPaid = truePrice,
                     WalletTransactionId = idempotencyKey,
                     Status = EnrollmentStatus.Active
                 };
@@ -53,7 +72,7 @@ namespace EnrollmentService.Services
             {
                 var update = Builders<Enrollment>.Update
                     .Set(e => e.Status, EnrollmentStatus.Active)
-                    .Set(e => e.CoinsPaid, coursePrice)
+                    .Set(e => e.CoinsPaid, truePrice)
                     .Set(e => e.WalletTransactionId, idempotencyKey);
 
                 await _enrollments.UpdateOneAsync(e => e.Id == existing.Id, update);
@@ -70,7 +89,6 @@ namespace EnrollmentService.Services
                 .ToListAsync();
         }
 
-        // Extremely fast method used by Video Player or Exam Engine to check access
         public async Task<bool> HasAccessAsync(string userId, string courseId)
         {
             return await _enrollments

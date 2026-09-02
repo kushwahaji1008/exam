@@ -24,7 +24,7 @@ namespace EnrollmentService.Controllers.V1
 
             // Note: In real app, fetch coursePrice from CourseService internally. 
             // For now, accepting from frontend for boilerplate.
-            var result = await _enrollmentManager.PurchaseCourseAsync(userId, request.CourseId, request.Price);
+            var result = await _enrollmentManager.PurchaseCourseAsync(userId, request.CourseId);
 
             if (!result.Success) return BadRequest(new { message = result.Message });
 
