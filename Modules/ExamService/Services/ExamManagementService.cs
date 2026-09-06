@@ -19,6 +19,7 @@ namespace ExamService.Services
         {
             var exam = new Exam
             {
+                ExamId = $"EXM-{new Random().Next(100000, 999999)}",
                 CourseId = request.CourseId,
                 Title = request.Title,
                 Description = request.Description,
@@ -61,20 +62,20 @@ namespace ExamService.Services
 
         public async Task<Exam?> GetExamByIdAsync(string examId)
         {
-            return await _mongoDb.Exams.Find(e => e.Id == examId).FirstOrDefaultAsync();
+            return await _mongoDb.Exams.Find(e => e.ExamId == examId).FirstOrDefaultAsync();
         }
 
         public async Task<bool> UpdateExamAsync(string examId, Exam updatedExam)
         {
             updatedExam.UpdatedAt = DateTime.UtcNow;
-            var result = await _mongoDb.Exams.ReplaceOneAsync(e => e.Id == examId, updatedExam);
+            var result = await _mongoDb.Exams.ReplaceOneAsync(e => e.ExamId == examId, updatedExam);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> DeleteExamAsync(string examId)
         {
             // Soft delete by archiving, or hard delete based on your preference
-            var result = await _mongoDb.Exams.DeleteOneAsync(e => e.Id == examId);
+            var result = await _mongoDb.Exams.DeleteOneAsync(e => e.ExamId == examId);
             return result.DeletedCount > 0;
         }
 
@@ -88,7 +89,7 @@ namespace ExamService.Services
                 .Set(e => e.Status, newStatus)
                 .Set(e => e.UpdatedAt, DateTime.UtcNow);
 
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -98,6 +99,7 @@ namespace ExamService.Services
             if (original == null) return null;
 
             original.Id = Guid.NewGuid().ToString(); // Generate new ID
+            original.ExamId = $"EXM-{new Random().Next(100000, 999999)}"; // New ExamId
             original.Title = $"{original.Title} (Clone)";
             original.Status = ExamStatus.Draft;
             original.CreatedBy = userId;
@@ -116,7 +118,7 @@ namespace ExamService.Services
                 .Set(e => e.Status, ExamStatus.Scheduled)
                 .Set(e => e.UpdatedAt, DateTime.UtcNow);
 
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -126,7 +128,7 @@ namespace ExamService.Services
                 .Set(e => e.Status, ExamStatus.Active)
                 .Set(e => e.UpdatedAt, DateTime.UtcNow);
 
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -137,7 +139,7 @@ namespace ExamService.Services
         public async Task<bool> UpdateExamSettingsAsync(string examId, ExamSettings settings)
         {
             var update = Builders<Exam>.Update.Set(e => e.Settings, settings).Set(e => e.UpdatedAt, DateTime.UtcNow);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -149,21 +151,21 @@ namespace ExamService.Services
                 .Set(e => e.Status, ExamStatus.Scheduled)
                 .Set(e => e.UpdatedAt, DateTime.UtcNow);
 
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> UpdateExamInstructionsAsync(string examId, string instructionsHtml)
         {
             var update = Builders<Exam>.Update.Set(e => e.InstructionsHtml, instructionsHtml);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> UpdateExamGradingAsync(string examId, ExamGrading grading)
         {
             var update = Builders<Exam>.Update.Set(e => e.Grading, grading);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -174,7 +176,7 @@ namespace ExamService.Services
         public async Task<bool> ReorderQuestionsAsync(string examId, List<string> orderedIds)
         {
             var update = Builders<Exam>.Update.Set(e => e.QuestionIds, orderedIds);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -191,7 +193,7 @@ namespace ExamService.Services
             };
 
             var update = Builders<Exam>.Update.Push(e => e.Sections, newSection);
-            await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return newSection.Id;
         }
 
@@ -207,14 +209,14 @@ namespace ExamService.Services
             section.Description = request.Description;
             section.QuestionIds = request.QuestionIds;
 
-            var result = await _mongoDb.Exams.ReplaceOneAsync(e => e.Id == examId, exam);
+            var result = await _mongoDb.Exams.ReplaceOneAsync(e => e.ExamId == examId, exam);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> DeleteSectionAsync(string examId, string sectionId)
         {
             var update = Builders<Exam>.Update.PullFilter(e => e.Sections, s => s.Id == sectionId);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -225,14 +227,14 @@ namespace ExamService.Services
         public async Task<bool> AddCandidatesBulkAsync(string examId, List<string> userIds)
         {
             var update = Builders<Exam>.Update.AddToSetEach(e => e.AllowedStudents, userIds);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
         public async Task<bool> RemoveCandidateAsync(string examId, string userId)
         {
             var update = Builders<Exam>.Update.Pull(e => e.AllowedStudents, userId);
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -243,7 +245,7 @@ namespace ExamService.Services
                 .Pull(e => e.AllowedStudents, userId)
                 .AddToSet(e => e.BlockedStudents, userId);
             
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -254,7 +256,7 @@ namespace ExamService.Services
                 .Pull(e => e.BlockedStudents, userId)
                 .AddToSet(e => e.AllowedStudents, userId);
             
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
@@ -265,14 +267,14 @@ namespace ExamService.Services
         public async Task<List<ExamVersionDto>> GetExamVersionsAsync(string parentExamId)
         {
             var versions = await _mongoDb.Exams
-                .Find(e => e.Id == parentExamId || e.ParentExamId == parentExamId)
+                .Find(e => e.ExamId == parentExamId || e.ParentExamId == parentExamId)
                 .SortByDescending(e => e.CreatedAt)
                 .ToListAsync();
 
             return versions.Select(v => new ExamVersionDto
             {
                 VersionId = v.Version,
-                ExamId = v.Id,
+                ExamId = v.ExamId,
                 CreatedAt = v.CreatedAt,
                 CreatedBy = v.CreatedBy,
                 IsActiveVersion = v.IsLatestVersion
@@ -286,13 +288,14 @@ namespace ExamService.Services
 
             // Mark old version as not latest
             var updateOld = Builders<Exam>.Update.Set(e => e.IsLatestVersion, false);
-            await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, updateOld);
+            await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, updateOld);
 
             // Create new version
             var newVersionValue = (double.Parse(original.Version) + 0.1).ToString("0.0");
             
-            original.ParentExamId = original.ParentExamId ?? original.Id; // Keep track of the root exam
-            original.Id = Guid.NewGuid().ToString(); 
+            original.ParentExamId = original.ParentExamId ?? original.ExamId; // Keep track of the root exam
+            original.Id = Guid.NewGuid().ToString(); // New unique ID for the new version
+            original.ExamId = $"EXM-{new Random().Next(100000, 999999)}"; // New ExamId
             original.Version = newVersionValue;
             original.IsLatestVersion = true;
             original.Status = ExamStatus.Draft;
@@ -301,7 +304,7 @@ namespace ExamService.Services
             original.UpdatedAt = null;
 
             await _mongoDb.Exams.InsertOneAsync(original);
-            return original.Id;
+            return original.ExamId;
         }
 
         #endregion
@@ -351,8 +354,7 @@ namespace ExamService.Services
         {
             return new ExamDto
             {
-                Id = exam.Id,
-                ExamId = $"EXM-{new Random().Next(100000, 999999)}",
+                ExamId = exam.ExamId,
                 CourseId = exam.CourseId,
                 Title = exam.Title,
                 Description = exam.Description,
@@ -381,7 +383,7 @@ namespace ExamService.Services
                 .Set(e => e.Status, ExamStatus.Completed)
                 .Set(e => e.UpdatedAt, DateTime.UtcNow);
 
-            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.Id == examId, update);
+            var result = await _mongoDb.Exams.UpdateOneAsync(e => e.ExamId == examId, update);
             return result.ModifiedCount > 0;
         }
 
