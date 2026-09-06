@@ -352,7 +352,7 @@ namespace ExamService.Services
             return new ExamDto
             {
                 Id = exam.Id,
-                ExamId = $"{new Random().Next(100000, 999999)}",
+                ExamId = $"EXM-{new Random().Next(100000, 999999)}",
                 CourseId = exam.CourseId,
                 Title = exam.Title,
                 Description = exam.Description,
