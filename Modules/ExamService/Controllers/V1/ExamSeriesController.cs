@@ -18,7 +18,7 @@ namespace ExamService.Controllers.V1
 
         // 1. Create a new Exam Series (Admin/Creator only)
         [HttpPost]
-        [Authorize(Roles = "1,2,Teacher,Admin")] // Assuming only logged in admins/teachers can create
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")] // Assuming only logged in admins/teachers can create
         public async Task<IActionResult> CreateSeries([FromBody] CreateExamSeriesRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? "SYSTEM";
@@ -49,7 +49,7 @@ namespace ExamService.Controllers.V1
 
         // 4. Add an Exam to the Series
         [HttpPost("{seriesId}/add-exam")]
-        [Authorize]
+        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> AddExam(string seriesId, [FromBody] AddExamToSeriesRequest request)
         {
             var result = await _seriesService.AddExamToSeriesAsync(seriesId, request.ExamId);

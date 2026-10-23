@@ -104,20 +104,38 @@ namespace QuestionBankService.Controllers.V1
 
         #region 2. Question Lifecycle
 
+        // [HttpPost("{questionId}/publish")]
+        // [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        // public async Task<IActionResult> PublishQuestion(string questionId)
+        // {
+        //     // TODO: Change status to Published
+        //     return Ok(new { message = "Question published" });
+        // }
+
+        // [HttpPost("{questionId}/unpublish")]
+        // [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        // public async Task<IActionResult> UnpublishQuestion(string questionId)
+        // {
+        //     // TODO: Change status to Draft/Unpublished
+        //     return Ok(new { message = "Question unpublished" });
+        // }
+
         [HttpPost("{questionId}/publish")]
         [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PublishQuestion(string questionId)
         {
-            // TODO: Change status to Published
-            return Ok(new { message = "Question published" });
+            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Published);
+            if (!success) return NotFound(new { message = "Question not found or update failed." });
+            return Ok(new { message = "Question published successfully" });
         }
 
         [HttpPost("{questionId}/unpublish")]
         [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UnpublishQuestion(string questionId)
         {
-            // TODO: Change status to Draft/Unpublished
-            return Ok(new { message = "Question unpublished" });
+            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Draft);
+            if (!success) return NotFound(new { message = "Question not found or update failed." });
+            return Ok(new { message = "Question unpublished and reverted to Draft" });
         }
 
         [HttpPost("{questionId}/archive")]
@@ -230,10 +248,10 @@ namespace QuestionBankService.Controllers.V1
 
         [HttpPost("~/api/v{version:apiVersion}/question-categories")]
         [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateCategory([FromBody] object request)
+        public async Task<IActionResult> CreateCategory([FromBody] Category request)
         {
-            // TODO: Create category
-            return Ok(new { message = "Category created" });
+            var category = await _questionService.CreateCategoryAsync(request);
+            return Ok(new { message = "Category created", category });
         }
 
         [HttpGet("~/api/v{version:apiVersion}/question-categories/{categoryId}")]
