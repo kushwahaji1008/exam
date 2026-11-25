@@ -53,7 +53,7 @@ namespace AuthService.Services
                 .Set(p => p.Description, request.Description);
 
             var result = await _mongoDb.Permissions.UpdateOneAsync(p => p.Id == permissionId, update);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> DeletePermissionAsync(string permissionId)

@@ -1,36 +1,52 @@
-using Microsoft.AspNetCore.Mvc;
+using AnalyticsService.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace AnalyticsService.Controllers
 {
     [ApiVersion("1.0")]
     [ApiController]
     [Route("api/v{version:apiVersion}/analytics/exams/{examId}")]
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Roles = "Admin,SuperAdmin,Teacher")]
     public class ExamAnalyticsController : ControllerBase
     {
+        private readonly AnalyticsManagementService _analytics;
+
+        public ExamAnalyticsController(AnalyticsManagementService analytics)
+        {
+            _analytics = analytics;
+        }
+
         [HttpGet]
-        public IActionResult GetExamOverview(string examId) => Ok(new { examId, totalAttempts = 450 });
+        public async Task<IActionResult> GetExamOverview(string examId) =>
+            Ok(await _analytics.GetExamOverviewAsync(examId));
 
         [HttpGet("performance")]
-        public IActionResult GetPerformance(string examId) => Ok(new { averageScore = 72.4, highestScore = 98 });
+        public async Task<IActionResult> GetPerformance(string examId) =>
+            Ok(await _analytics.GetExamPerformanceAsync(examId));
 
         [HttpGet("completion")]
-        public IActionResult GetCompletionStats(string examId) => Ok(new { completionRate = "94%" });
+        public async Task<IActionResult> GetCompletionStats(string examId) =>
+            Ok(await _analytics.GetExamCompletionAsync(examId));
 
         [HttpGet("dropout")]
-        public IActionResult GetDropoutStats(string examId) => Ok(new { dropoutRate = "6%" });
+        public async Task<IActionResult> GetDropoutStats(string examId) =>
+            Ok(await _analytics.GetExamDropoutAsync(examId));
 
         [HttpGet("timing")]
-        public IActionResult GetTimingStats(string examId) => Ok(new { averageCompletionTime = "45 mins" });
+        public async Task<IActionResult> GetTimingStats(string examId) =>
+            Ok(await _analytics.GetExamTimingAsync(examId));
 
         [HttpGet("questions")]
-        public IActionResult GetQuestionStats(string examId) => Ok(new { mostFailedQuestionId = "Q12" });
+        public async Task<IActionResult> GetQuestionStats(string examId) =>
+            Ok(await _analytics.GetExamQuestionStatsAsync(examId));
 
         [HttpGet("difficulty")]
-        public IActionResult GetDifficultyIndex(string examId) => Ok(new { perceivedDifficulty = "Hard", score = 0.85 });
+        public async Task<IActionResult> GetDifficultyIndex(string examId) =>
+            Ok(await _analytics.GetExamDifficultyAsync(examId));
 
         [HttpGet("distribution")]
-        public IActionResult GetScoreDistribution(string examId) => Ok(new { bellCurveData = new[] { 10, 20, 40, 20, 10 } });
+        public async Task<IActionResult> GetScoreDistribution(string examId) =>
+            Ok(await _analytics.GetExamScoreDistributionAsync(examId));
     }
 }

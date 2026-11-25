@@ -1,15 +1,17 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 
 namespace EnrollmentService.Clients
 {
     public class WalletServiceClient
     {
         private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
 
-        public WalletServiceClient(HttpClient httpClient)
+        public WalletServiceClient(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
+            _configuration = configuration;
         }
 
         public async Task<(bool Success, string Message)> DebitCoinsAsync(string userId, decimal amount, string idempotencyKey, string referenceId)
@@ -23,11 +25,18 @@ namespace EnrollmentService.Clients
                 SourceService = "EnrollmentService"
             };
 
-            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            
-            // Call the internal endpoint we created in WalletService
-            var response = await _httpClient.PostAsync("/api/internal/wallet/debit", content);
-            
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/internal/wallet/debit")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+
+            var serviceKey = _configuration["InternalAuth:ServiceKey"] ?? Environment.GetEnvironmentVariable("INTERNAL_SERVICE_KEY");
+            if (!string.IsNullOrWhiteSpace(serviceKey))
+            {
+                requestMessage.Headers.TryAddWithoutValidation("X-Internal-Service-Key", serviceKey);
+            }
+
+            var response = await _httpClient.SendAsync(requestMessage);
             var responseString = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
@@ -35,17 +44,20 @@ namespace EnrollmentService.Clients
                 return (true, "Payment successful via Wallet.");
             }
 
-            // Extract error message from WalletService if any
             try
             {
                 var errorObj = JsonSerializer.Deserialize<JsonElement>(responseString);
-                var errorMsg = errorObj.GetProperty("message").GetString();
-                return (false, errorMsg ?? "Wallet deduction failed.");
+                if (errorObj.TryGetProperty("message", out var msgProp))
+                {
+                    return (false, msgProp.GetString() ?? "Wallet deduction failed.");
+                }
             }
             catch
             {
-                return (false, "Wallet deduction failed due to a network error.");
+                // Non-JSON response
             }
+
+            return (false, "Wallet deduction failed.");
         }
     }
 }

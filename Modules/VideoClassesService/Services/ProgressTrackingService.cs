@@ -14,25 +14,40 @@ namespace VideoClassesService.Services
             _logger = logger;
         }
 
+        private async Task<int> CountCourseLessonsAsync(string courseId)
+        {
+            var chapterIds = await _mongoDb.Chapters
+                .Find(c => c.CourseId == courseId)
+                .Project(c => c.Id)
+                .ToListAsync();
+
+            if (chapterIds.Count == 0) return 0;
+
+            return (int)await _mongoDb.Lessons
+                .CountDocumentsAsync(l => chapterIds.Contains(l.ChapterId));
+        }
+
         public async Task<StudentProgress> EnrollStudentAsync(string studentId, string courseId)
         {
-            // Check if already enrolled
             var existing = await GetStudentProgressAsync(studentId, courseId);
             if (existing != null)
             {
                 return existing;
             }
 
+            int totalLessons = await CountCourseLessonsAsync(courseId);
+
             var progress = new StudentProgress
             {
                 StudentId = studentId,
                 CourseId = courseId,
-                EnrolledAt = DateTime.UtcNow
+                TotalLessons = totalLessons,
+                EnrolledAt = DateTime.UtcNow,
+                LastAccessedAt = DateTime.UtcNow
             };
 
             await _mongoDb.StudentProgress.InsertOneAsync(progress);
 
-            // Increment course enrollment count
             var update = Builders<Course>.Update.Inc(c => c.TotalStudentsEnrolled, 1);
             await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
 
@@ -61,11 +76,12 @@ namespace VideoClassesService.Services
             int watchedSeconds,
             int totalSeconds)
         {
-            var progress = await GetStudentProgressAsync(studentId, courseId);
-            if (progress == null)
-            {
-                progress = await EnrollStudentAsync(studentId, courseId);
-            }
+            var progress = await GetStudentProgressAsync(studentId, courseId)
+                           ?? await EnrollStudentAsync(studentId, courseId);
+
+            int totalLessons = await CountCourseLessonsAsync(courseId);
+            if (totalLessons > 0)
+                progress.TotalLessons = totalLessons;
 
             var lessonProgress = progress.LessonProgress.GetValueOrDefault(lessonId, new LessonProgress
             {
@@ -74,30 +90,35 @@ namespace VideoClassesService.Services
             });
 
             lessonProgress.WatchedSeconds = Math.Max(lessonProgress.WatchedSeconds, watchedSeconds);
-            lessonProgress.TotalSeconds = totalSeconds;
-            lessonProgress.ProgressPercentage = totalSeconds > 0 ? (lessonProgress.WatchedSeconds / (double)totalSeconds) * 100 : 0;
+            lessonProgress.TotalSeconds = totalSeconds > 0 ? totalSeconds : lessonProgress.TotalSeconds;
+            lessonProgress.ProgressPercentage = lessonProgress.TotalSeconds > 0
+                ? Math.Min(100.0, (lessonProgress.WatchedSeconds / (double)lessonProgress.TotalSeconds) * 100)
+                : 100.0;
             lessonProgress.LastWatchedAt = DateTime.UtcNow;
 
-            // Mark as completed if watched >= 90%
             if (lessonProgress.ProgressPercentage >= 90 && !lessonProgress.IsCompleted)
             {
                 lessonProgress.IsCompleted = true;
                 lessonProgress.CompletedAt = DateTime.UtcNow;
-                progress.TotalLessonsCompleted++;
             }
 
             progress.LessonProgress[lessonId] = lessonProgress;
+            progress.TotalLessonsCompleted = progress.LessonProgress.Values.Count(lp => lp.IsCompleted);
             progress.LastAccessedAt = DateTime.UtcNow;
             progress.CurrentLessonId = lessonId;
 
-            // Calculate overall progress
             if (progress.TotalLessons > 0)
             {
-                progress.CompletionPercentage = (progress.TotalLessonsCompleted / (double)progress.TotalLessons) * 100;
+                progress.CompletionPercentage = Math.Min(100.0, Math.Round((progress.TotalLessonsCompleted / (double)progress.TotalLessons) * 100, 2));
+            }
+            else
+            {
+                progress.CompletionPercentage = lessonProgress.IsCompleted ? 100.0 : lessonProgress.ProgressPercentage;
             }
 
             var update = Builders<StudentProgress>.Update
                 .Set(p => p.LessonProgress, progress.LessonProgress)
+                .Set(p => p.TotalLessons, progress.TotalLessons)
                 .Set(p => p.TotalLessonsCompleted, progress.TotalLessonsCompleted)
                 .Set(p => p.CompletionPercentage, progress.CompletionPercentage)
                 .Set(p => p.LastAccessedAt, progress.LastAccessedAt)
@@ -108,7 +129,7 @@ namespace VideoClassesService.Services
                 update
             );
 
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> AddNoteAsync(string studentId, string courseId, string lessonId, Note note)
@@ -117,21 +138,13 @@ namespace VideoClassesService.Services
             if (progress == null) return false;
 
             if (!progress.LessonProgress.ContainsKey(lessonId))
-            {
                 progress.LessonProgress[lessonId] = new LessonProgress { LessonId = lessonId };
-            }
 
             progress.LessonProgress[lessonId].Notes.Add(note);
 
-            var update = Builders<StudentProgress>.Update
-                .Set(p => p.LessonProgress, progress.LessonProgress);
-
-            var result = await _mongoDb.StudentProgress.UpdateOneAsync(
-                p => p.StudentId == studentId && p.CourseId == courseId,
-                update
-            );
-
-            return result.ModifiedCount > 0;
+            var update = Builders<StudentProgress>.Update.Set(p => p.LessonProgress, progress.LessonProgress);
+            var result = await _mongoDb.StudentProgress.UpdateOneAsync(p => p.StudentId == studentId && p.CourseId == courseId, update);
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> AddBookmarkAsync(string studentId, string courseId, string lessonId, int timestamp)
@@ -140,62 +153,45 @@ namespace VideoClassesService.Services
             if (progress == null) return false;
 
             if (!progress.LessonProgress.ContainsKey(lessonId))
-            {
                 progress.LessonProgress[lessonId] = new LessonProgress { LessonId = lessonId };
-            }
 
             if (!progress.LessonProgress[lessonId].Bookmarks.Contains(timestamp))
-            {
                 progress.LessonProgress[lessonId].Bookmarks.Add(timestamp);
-            }
 
-            var update = Builders<StudentProgress>.Update
-                .Set(p => p.LessonProgress, progress.LessonProgress);
-
-            var result = await _mongoDb.StudentProgress.UpdateOneAsync(
-                p => p.StudentId == studentId && p.CourseId == courseId,
-                update
-            );
-
-            return result.ModifiedCount > 0;
+            var update = Builders<StudentProgress>.Update.Set(p => p.LessonProgress, progress.LessonProgress);
+            var result = await _mongoDb.StudentProgress.UpdateOneAsync(p => p.StudentId == studentId && p.CourseId == courseId, update);
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> RateCourseAsync(string studentId, string courseId, int rating, string? review)
         {
+            if (rating < 1 || rating > 5) return false;
+
             var progress = await GetStudentProgressAsync(studentId, courseId);
             if (progress == null) return false;
 
             var oldRating = progress.Rating;
-            progress.Rating = rating;
-            progress.Review = review;
-
             var update = Builders<StudentProgress>.Update
                 .Set(p => p.Rating, rating)
                 .Set(p => p.Review, review);
 
-            await _mongoDb.StudentProgress.UpdateOneAsync(
-                p => p.StudentId == studentId && p.CourseId == courseId,
-                update
-            );
+            await _mongoDb.StudentProgress.UpdateOneAsync(p => p.StudentId == studentId && p.CourseId == courseId, update);
 
-            // Update course average rating
             var course = await _mongoDb.Courses.Find(c => c.Id == courseId).FirstOrDefaultAsync();
             if (course != null)
             {
-                if (oldRating.HasValue)
+                if (oldRating.HasValue && course.TotalRatings > 0)
                 {
-                    // Update existing rating
                     course.AverageRating = ((course.AverageRating * course.TotalRatings) - oldRating.Value + rating) / course.TotalRatings;
                 }
                 else
                 {
-                    // New rating
                     course.TotalRatings++;
                     course.AverageRating = ((course.AverageRating * (course.TotalRatings - 1)) + rating) / course.TotalRatings;
                 }
 
                 var courseUpdate = Builders<Course>.Update
-                    .Set(c => c.AverageRating, course.AverageRating)
+                    .Set(c => c.AverageRating, Math.Round(course.AverageRating, 2))
                     .Set(c => c.TotalRatings, course.TotalRatings);
 
                 await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, courseUpdate);

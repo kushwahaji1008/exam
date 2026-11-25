@@ -12,57 +12,55 @@ namespace WalletService.Services
         {
             _wallets = mongoDb.Wallets;
             _transactions = mongoDb.WalletTransactions;
-            
-            // Create Index for Idempotency to make checks super fast
-            var indexOptions = new CreateIndexOptions { Unique = true };
-            var indexKeys = Builders<WalletTransaction>.IndexKeys.Ascending(t => t.IdempotencyKey);
-            var indexModel = new CreateIndexModel<WalletTransaction>(indexKeys, indexOptions);
-            _transactions.Indexes.CreateOne(indexModel);
         }
 
         public async Task<Wallet> GetBalanceAsync(string userId)
         {
-            var wallet = await _wallets.Find(w => w.UserId == userId).FirstOrDefaultAsync();
-            if (wallet == null)
-            {
-                wallet = new Wallet { UserId = userId, Balance = 0 };
-                await _wallets.InsertOneAsync(wallet);
-            }
-            return wallet;
+            var filter = Builders<Wallet>.Filter.Eq(w => w.UserId, userId);
+            var update = Builders<Wallet>.Update
+                .SetOnInsert(w => w.Id, Guid.NewGuid().ToString())
+                .SetOnInsert(w => w.UserId, userId)
+                .SetOnInsert(w => w.Balance, 0m)
+                .SetOnInsert(w => w.CreatedAt, DateTime.UtcNow)
+                .SetOnInsert(w => w.UpdatedAt, DateTime.UtcNow);
+
+            return await _wallets.FindOneAndUpdateAsync(
+                filter,
+                update,
+                new FindOneAndUpdateOptions<Wallet>
+                {
+                    IsUpsert = true,
+                    ReturnDocument = ReturnDocument.After
+                });
+        }
+
+        public async Task<(List<WalletTransaction> Items, long Total)> GetTransactionsAsync(string userId, int page = 1, int pageSize = 20)
+        {
+            var safePage = Math.Max(1, page);
+            var safeSize = Math.Clamp(pageSize, 1, 100);
+            var filter = Builders<WalletTransaction>.Filter.Eq(t => t.UserId, userId);
+
+            var total = await _transactions.CountDocumentsAsync(filter);
+            var items = await _transactions.Find(filter)
+                .SortByDescending(t => t.Timestamp)
+                .Skip((safePage - 1) * safeSize)
+                .Limit(safeSize)
+                .ToListAsync();
+
+            return (items, total);
         }
 
         // ==========================================
-        // DEBIT LOGIC (Strict Security + Atomic)
+        // DEBIT LOGIC (Strict Amount Validation + Idempotency-First + Atomic)
         // ==========================================
         public async Task<(bool Success, string Message)> DebitAsync(string userId, decimal amount, string idempotencyKey, string referenceId, string sourceService)
         {
-            // 1. CHECK IDEMPOTENCY (Agar pehle hi transaction ho chuki hai, toh return success)
-            var existingTxn = await _transactions.Find(t => t.IdempotencyKey == idempotencyKey).FirstOrDefaultAsync();
-            if (existingTxn != null) return (true, "Transaction already processed successfully.");
+            if (string.IsNullOrWhiteSpace(userId)) return (false, "User ID is required.");
+            if (amount < 0) return (false, "Debit amount cannot be negative.");
+            if (amount == 0) return (true, "No payment required.");
+            if (string.IsNullOrWhiteSpace(idempotencyKey)) return (false, "Idempotency key is required.");
 
-            // 2. ATOMIC DEBIT (Balance check and deduct in a single database hit)
-            var filter = Builders<Wallet>.Filter.And(
-                Builders<Wallet>.Filter.Eq(w => w.UserId, userId),
-                Builders<Wallet>.Filter.Gte(w => w.Balance, amount) // Must have enough balance!
-            );
-
-            var update = Builders<Wallet>.Update
-                .Inc(w => w.Balance, -amount)
-                .Set(w => w.UpdatedAt, DateTime.UtcNow);
-
-            var result = await _wallets.FindOneAndUpdateAsync(filter, update);
-
-            // Agar result null hai matlab filter fail hua (ya toh user nahi hai ya balance kam hai)
-            if (result == null)
-            {
-                // Check if wallet exists at all
-                var exists = await _wallets.Find(w => w.UserId == userId).AnyAsync();
-                if (!exists) return (false, "Wallet not found.");
-
-                return (false, "Insufficient balance.");
-            }
-
-            // 3. LOG TRANSACTION (Ledger Entry)
+            // Claim idempotency key FIRST to eliminate concurrent double-spend races
             var txn = new WalletTransaction
             {
                 UserId = userId,
@@ -71,28 +69,53 @@ namespace WalletService.Services
                 Type = "DEBIT",
                 ReferenceId = referenceId,
                 SourceService = sourceService,
-                Description = $"Paid for {referenceId} via {sourceService}"
+                Description = $"Paid for {referenceId} via {sourceService}",
+                Timestamp = DateTime.UtcNow
             };
-            await _transactions.InsertOneAsync(txn);
+
+            try
+            {
+                await _transactions.InsertOneAsync(txn);
+            }
+            catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+            {
+                return (true, "Transaction already processed successfully.");
+            }
+
+            // Atomic balance check & deduction
+            var filter = Builders<Wallet>.Filter.And(
+                Builders<Wallet>.Filter.Eq(w => w.UserId, userId),
+                Builders<Wallet>.Filter.Gte(w => w.Balance, amount)
+            );
+
+            var update = Builders<Wallet>.Update
+                .Inc(w => w.Balance, -amount)
+                .Set(w => w.UpdatedAt, DateTime.UtcNow);
+
+            var result = await _wallets.FindOneAndUpdateAsync(
+                filter,
+                update,
+                new FindOneAndUpdateOptions<Wallet> { ReturnDocument = ReturnDocument.After });
+
+            if (result == null)
+            {
+                // Compensate: release idempotency lock so user can retry after topping up
+                await _transactions.DeleteOneAsync(t => t.Id == txn.Id);
+                var exists = await _wallets.Find(w => w.UserId == userId).AnyAsync();
+                return exists ? (false, "Insufficient balance.") : (false, "Wallet not found.");
+            }
 
             return (true, "Payment successful.");
         }
 
         // ==========================================
-        // CREDIT LOGIC (Add coins securely)
+        // CREDIT LOGIC (Validation + Idempotency-First + Atomic)
         // ==========================================
         public async Task<(bool Success, string Message)> CreditAsync(string userId, decimal amount, string idempotencyKey, string referenceId, string description)
         {
-            var existingTxn = await _transactions.Find(t => t.IdempotencyKey == idempotencyKey).FirstOrDefaultAsync();
-            if (existingTxn != null) return (true, "Transaction already processed.");
-
-            await GetBalanceAsync(userId); // Ensure wallet exists
-
-            var update = Builders<Wallet>.Update
-                .Inc(w => w.Balance, amount)
-                .Set(w => w.UpdatedAt, DateTime.UtcNow);
-
-            await _wallets.UpdateOneAsync(w => w.UserId == userId, update);
+            if (string.IsNullOrWhiteSpace(userId)) return (false, "User ID is required.");
+            if (amount <= 0) return (false, "Credit amount must be greater than zero.");
+            if (string.IsNullOrWhiteSpace(idempotencyKey)) return (false, "Idempotency key is required.");
 
             var txn = new WalletTransaction
             {
@@ -102,10 +125,26 @@ namespace WalletService.Services
                 Type = "CREDIT",
                 ReferenceId = referenceId,
                 SourceService = "InternalSystem",
-                Description = description
+                Description = description,
+                Timestamp = DateTime.UtcNow
             };
-            await _transactions.InsertOneAsync(txn);
 
+            try
+            {
+                await _transactions.InsertOneAsync(txn);
+            }
+            catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+            {
+                return (true, "Transaction already processed.");
+            }
+
+            await GetBalanceAsync(userId); // Ensure wallet exists atomically
+
+            var update = Builders<Wallet>.Update
+                .Inc(w => w.Balance, amount)
+                .Set(w => w.UpdatedAt, DateTime.UtcNow);
+
+            await _wallets.UpdateOneAsync(w => w.UserId == userId, update);
             return (true, "Coins added successfully.");
         }
     }

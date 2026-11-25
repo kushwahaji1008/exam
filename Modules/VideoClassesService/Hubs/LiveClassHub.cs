@@ -95,6 +95,7 @@ namespace VideoClassesService.Hubs
             });
         }
 
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task CreatePoll(string liveClassId, Poll poll)
         {
             await _liveClassService.CreatePollAsync(liveClassId, poll);

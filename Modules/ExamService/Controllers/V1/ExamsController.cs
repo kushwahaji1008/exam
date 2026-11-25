@@ -1,8 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Versioning;
-using Microsoft.AspNetCore.Authorization;
+using System.Text.Json;
 using ExamService.Models;
 using ExamService.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace ExamService.Controllers.V1
 {
@@ -21,7 +22,8 @@ namespace ExamService.Controllers.V1
         }
 
         private string? GetCurrentUserId() => User.FindFirst("userId")?.Value;
-        private string? GetCurrentUserRole() => User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        private string? GetCurrentUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+        private bool IsStaff() => GetCurrentUserRole() is "Teacher" or "Admin" or "SuperAdmin";
 
         // ==========================================
         // CORE CRUD
@@ -49,7 +51,45 @@ namespace ExamService.Controllers.V1
         public async Task<IActionResult> GetExamById(string examId)
         {
             var exam = await _examService.GetExamByIdAsync(examId);
-            return exam == null ? NotFound() : Ok(exam);
+            if (exam == null) return NotFound();
+
+            if (!IsStaff())
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                bool isVisibleStatus = exam.Status is ExamStatus.Published or ExamStatus.Scheduled or ExamStatus.Active or ExamStatus.Completed;
+                bool isBlocked = exam.BlockedStudents.Contains(userId);
+                bool isAllowed = exam.AllowedStudents.Count == 0 || exam.AllowedStudents.Contains(userId);
+
+                if (!isVisibleStatus || isBlocked || !isAllowed)
+                    return Forbid();
+
+                // Strip AllowedStudents / BlockedStudents candidate PII for students
+                return Ok(new
+                {
+                    exam.Id,
+                    exam.ExamId,
+                    exam.CourseId,
+                    exam.Title,
+                    exam.Description,
+                    exam.DurationMinutes,
+                    exam.ScheduledStartTime,
+                    exam.ScheduledEndTime,
+                    exam.Type,
+                    exam.Status,
+                    exam.CreatedBy,
+                    exam.CreatedAt,
+                    exam.QuestionIds,
+                    exam.Sections,
+                    exam.Settings,
+                    exam.Grading,
+                    exam.InstructionsHtml,
+                    exam.TotalMarks,
+                    exam.PassingMarks,
+                    exam.Version
+                });
+            }
+
+            return Ok(exam);
         }
 
         [HttpPut("{examId}")]
@@ -57,15 +97,15 @@ namespace ExamService.Controllers.V1
         public async Task<IActionResult> UpdateExam(string examId, [FromBody] Exam updatedExam)
         {
             var success = await _examService.UpdateExamAsync(examId, updatedExam);
-            return success ? Ok(new { message = "Exam updated" }) : BadRequest();
+            return success ? Ok(new { message = "Exam updated" }) : NotFound(new { message = "Exam not found" });
         }
 
         [HttpPatch("{examId}")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PatchExam(string examId, [FromBody] object patchData)
         {
-            // TODO: Implement partial update
-            return Ok(new { message = "Exam patched" });
+            var success = await _examService.PatchExamAsync(examId, patchData);
+            return success ? Ok(new { message = "Exam patched" }) : NotFound(new { message = "Exam not found or invalid patch payload" });
         }
 
         [HttpDelete("{examId}")]
@@ -82,74 +122,159 @@ namespace ExamService.Controllers.V1
 
         [HttpPost("{examId}/publish")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> PublishExam(string examId) => Ok(new { message = "Exam published" });
+        public async Task<IActionResult> PublishExam(string examId)
+        {
+            var success = await _examService.ChangeExamStatusAsync(examId, ExamStatus.Published);
+            return success ? Ok(new { message = "Exam published" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/unpublish")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UnpublishExam(string examId) => Ok(new { message = "Exam unpublished" });
+        public async Task<IActionResult> UnpublishExam(string examId)
+        {
+            var success = await _examService.ChangeExamStatusAsync(examId, ExamStatus.Draft);
+            return success ? Ok(new { message = "Exam unpublished" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/activate")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> ActivateExam(string examId) => Ok(new { message = "Exam activated" });
+        public async Task<IActionResult> ActivateExam(string examId)
+        {
+            var success = await _examService.ActivateExamAsync(examId);
+            return success ? Ok(new { message = "Exam activated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/deactivate")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> DeactivateExam(string examId) => Ok(new { message = "Exam deactivated" });
+        public async Task<IActionResult> DeactivateExam(string examId)
+        {
+            var success = await _examService.ChangeExamStatusAsync(examId, ExamStatus.Published);
+            return success ? Ok(new { message = "Exam deactivated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/archive")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> ArchiveExam(string examId) => Ok(new { message = "Exam archived" });
+        public async Task<IActionResult> ArchiveExam(string examId)
+        {
+            var success = await _examService.ChangeExamStatusAsync(examId, ExamStatus.Archived);
+            return success ? Ok(new { message = "Exam archived" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/restore")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> RestoreExam(string examId) => Ok(new { message = "Exam restored" });
+        public async Task<IActionResult> RestoreExam(string examId)
+        {
+            var success = await _examService.ChangeExamStatusAsync(examId, ExamStatus.Draft);
+            return success ? Ok(new { message = "Exam restored" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/duplicate")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> DuplicateExam(string examId) => Ok(new { message = "Exam duplicated", newExamId = "NEW_ID" });
+        public async Task<IActionResult> DuplicateExam(string examId)
+        {
+            var newExamId = await _examService.CloneExamAsync(examId, GetCurrentUserId()!);
+            return newExamId != null ? Ok(new { message = "Exam duplicated", newExamId }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpPost("{examId}/clone")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CloneExam(string examId) => Ok(new { message = "Exam cloned", newExamId = "NEW_ID" });
+        public async Task<IActionResult> CloneExam(string examId)
+        {
+            var newExamId = await _examService.CloneExamAsync(examId, GetCurrentUserId()!);
+            return newExamId != null ? Ok(new { message = "Exam cloned", newExamId }) : NotFound(new { message = "Exam not found" });
+        }
 
         // ==========================================
         // CONFIGURATION
         // ==========================================
 
         [HttpGet("{examId}/settings")]
-        public async Task<IActionResult> GetExamSettings(string examId) => Ok(new { settings = new { } });
+        [Authorize]
+        public async Task<IActionResult> GetExamSettings(string examId)
+        {
+            var exam = await _examService.GetExamByIdAsync(examId);
+            return exam == null ? NotFound() : Ok(new { settings = exam.Settings });
+        }
 
         [HttpPut("{examId}/settings")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateExamSettings(string examId, [FromBody] object settings) => Ok(new { message = "Settings updated" });
+        public async Task<IActionResult> UpdateExamSettings(string examId, [FromBody] ExamSettings settings)
+        {
+            var success = await _examService.UpdateExamSettingsAsync(examId, settings);
+            return success ? Ok(new { message = "Settings updated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("{examId}/schedule")]
-        public async Task<IActionResult> GetExamSchedule(string examId) => Ok(new { schedule = new { } });
+        [Authorize]
+        public async Task<IActionResult> GetExamSchedule(string examId)
+        {
+            var exam = await _examService.GetExamByIdAsync(examId);
+            if (exam == null) return NotFound();
+
+            return Ok(new
+            {
+                schedule = new
+                {
+                    startTime = exam.ScheduledStartTime,
+                    endTime = exam.ScheduledEndTime,
+                    durationMinutes = exam.DurationMinutes
+                }
+            });
+        }
 
         [HttpPut("{examId}/schedule")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateExamSchedule(string examId, [FromBody] ScheduleRequest request) => Ok(new { message = "Schedule updated" });
+        public async Task<IActionResult> UpdateExamSchedule(string examId, [FromBody] ScheduleRequest request)
+        {
+            var success = await _examService.UpdateExamScheduleAsync(examId, request);
+            return success ? Ok(new { message = "Schedule updated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("{examId}/instructions")]
-        public async Task<IActionResult> GetExamInstructions(string examId) => Ok(new { instructions = "..." });
+        [Authorize]
+        public async Task<IActionResult> GetExamInstructions(string examId)
+        {
+            var exam = await _examService.GetExamByIdAsync(examId);
+            return exam == null ? NotFound() : Ok(new { instructions = exam.InstructionsHtml ?? string.Empty });
+        }
 
         [HttpPut("{examId}/instructions")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateExamInstructions(string examId, [FromBody] object request) => Ok(new { message = "Instructions updated" });
+        public async Task<IActionResult> UpdateExamInstructions(string examId, [FromBody] JsonElement request)
+        {
+            string instructionsHtml = string.Empty;
+            if (request.ValueKind == JsonValueKind.Object)
+            {
+                if (request.TryGetProperty("instructionsHtml", out var h)) instructionsHtml = h.GetString() ?? string.Empty;
+                else if (request.TryGetProperty("instructions", out var i)) instructionsHtml = i.GetString() ?? string.Empty;
+                else if (request.TryGetProperty("InstructionsHtml", out var p)) instructionsHtml = p.GetString() ?? string.Empty;
+            }
+
+            var success = await _examService.UpdateExamInstructionsAsync(examId, instructionsHtml);
+            return success ? Ok(new { message = "Instructions updated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("{examId}/grading")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetExamGrading(string examId) => Ok(new { grading = new { } });
+        public async Task<IActionResult> GetExamGrading(string examId)
+        {
+            var exam = await _examService.GetExamByIdAsync(examId);
+            return exam == null ? NotFound() : Ok(new { grading = exam.Grading });
+        }
 
         [HttpPut("{examId}/grading")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateExamGrading(string examId, [FromBody] object request) => Ok(new { message = "Grading rules updated" });
+        public async Task<IActionResult> UpdateExamGrading(string examId, [FromBody] ExamGrading request)
+        {
+            var success = await _examService.UpdateExamGradingAsync(examId, request);
+            return success ? Ok(new { message = "Grading rules updated" }) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("health")]
         public IActionResult Health() => Ok(new { status = "healthy", service = "ExamService", timestamp = DateTime.UtcNow });
 
         // ==========================================
-        // CUSTOM EXAM VIEWS & STATES (From your original code)
+        // CUSTOM EXAM VIEWS & STATES
         // ==========================================
 
         [HttpPost("{examId}/complete")]
@@ -176,6 +301,4 @@ namespace ExamService.Controllers.V1
             return Ok(exams.Select(ExamManagementService.ToExamDto));
         }
     }
-
-    public class ScheduleRequest { public DateTime StartTime { get; set; } public DateTime EndTime { get; set; } }
 }

@@ -87,7 +87,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{liveClassId}/join")]
-        [Authorize(Roles = "Student")]
+        [Authorize]
         public async Task<IActionResult> JoinLiveClass(string liveClassId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;

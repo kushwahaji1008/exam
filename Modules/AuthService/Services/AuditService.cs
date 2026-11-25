@@ -19,6 +19,9 @@ namespace AuthService.Services
 
         public async Task<object> GetAllAuditLogsAsync(AuditFilterRequest filter)
         {
+            var page = Math.Max(1, filter.Page);
+            var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
             var builder = Builders<AuditLog>.Filter;
             var mongoFilter = builder.Empty;
 
@@ -26,7 +29,7 @@ namespace AuthService.Services
                 mongoFilter &= builder.Eq(a => a.UserId, filter.UserId);
 
             if (!string.IsNullOrEmpty(filter.ActionType))
-                mongoFilter &= builder.Regex(a => a.ActionType, new BsonRegularExpression(filter.ActionType, "i"));
+                mongoFilter &= builder.Regex(a => a.ActionType, new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(filter.ActionType), "i"));
 
             if (filter.StartDate.HasValue)
                 mongoFilter &= builder.Gte(a => a.Timestamp, filter.StartDate.Value);
@@ -38,16 +41,16 @@ namespace AuthService.Services
             
             var logs = await _mongoDb.AuditLogs.Find(mongoFilter)
                 .SortByDescending(a => a.Timestamp)
-                .Skip((filter.Page - 1) * filter.PageSize)
-                .Limit(filter.PageSize)
+                .Skip((page - 1) * pageSize)
+                .Limit(pageSize)
                 .ToListAsync();
 
             return new
             {
                 TotalRecords = totalRecords,
-                Page = filter.Page,
-                PageSize = filter.PageSize,
-                TotalPages = (int)Math.Ceiling(totalRecords / (double)filter.PageSize),
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling(totalRecords / (double)pageSize),
                 Data = logs
             };
         }
@@ -84,6 +87,9 @@ namespace AuthService.Services
 
         public async Task<object> GetAllSecurityEventsAsync(SecurityEventFilterRequest filter)
         {
+            var page = Math.Max(1, filter.Page);
+            var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
             var builder = Builders<SecurityEvent>.Filter;
             var mongoFilter = builder.Empty;
 
@@ -91,7 +97,7 @@ namespace AuthService.Services
                 mongoFilter &= builder.Eq(s => s.UserId, filter.UserId);
 
             if (!string.IsNullOrEmpty(filter.ActionType)) // Mapping ActionType to EventType
-                mongoFilter &= builder.Regex(s => s.EventType, new BsonRegularExpression(filter.ActionType, "i"));
+                mongoFilter &= builder.Regex(s => s.EventType, new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(filter.ActionType), "i"));
 
             if (!string.IsNullOrEmpty(filter.EventLevel))
                 mongoFilter &= builder.Eq(s => s.EventLevel, filter.EventLevel);
@@ -106,16 +112,16 @@ namespace AuthService.Services
             
             var events = await _mongoDb.SecurityEvents.Find(mongoFilter)
                 .SortByDescending(s => s.Timestamp)
-                .Skip((filter.Page - 1) * filter.PageSize)
-                .Limit(filter.PageSize)
+                .Skip((page - 1) * pageSize)
+                .Limit(pageSize)
                 .ToListAsync();
 
             return new
             {
                 TotalRecords = totalRecords,
-                Page = filter.Page,
-                PageSize = filter.PageSize,
-                TotalPages = (int)Math.Ceiling(totalRecords / (double)filter.PageSize),
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling(totalRecords / (double)pageSize),
                 Data = events
             };
         }

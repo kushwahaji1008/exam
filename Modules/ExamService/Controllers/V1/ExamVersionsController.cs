@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Versioning;
-using Microsoft.AspNetCore.Authorization;
 using ExamService.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ExamService.Controllers.V1
 {
@@ -19,18 +18,42 @@ namespace ExamService.Controllers.V1
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetVersions(string examId) => Ok(new { versions = new[] { "v1.0", "v1.1" } });
+        public async Task<IActionResult> GetVersions(string examId)
+        {
+            var versions = await _examService.GetExamVersionsAsync(examId);
+            return Ok(new { versions });
+        }
 
         [HttpGet("{versionId}")]
-        public async Task<IActionResult> GetVersionById(string examId, string versionId) => Ok(new { versionId, data = new { } });
+        public async Task<IActionResult> GetVersionById(string examId, string versionId)
+        {
+            var version = await _examService.GetVersionAsync(examId, versionId);
+            return version != null ? Ok(new { versionId = version.Version, data = version }) : NotFound(new { message = "Version not found" });
+        }
 
         [HttpPost]
-        public async Task<IActionResult> CreateNewVersion(string examId) => Ok(new { message = "New version drafted", versionId = "v1.2" });
+        public async Task<IActionResult> CreateNewVersion(string examId)
+        {
+            var userId = User.FindFirst("userId")?.Value ?? "SYSTEM";
+            var newExamId = await _examService.CreateNewVersionAsync(examId, userId);
+            if (newExamId == null) return NotFound(new { message = "Exam not found" });
+
+            var created = await _examService.GetExamByIdAsync(newExamId);
+            return Ok(new { message = "New version drafted", versionId = created?.Version ?? "1.1", newExamId });
+        }
 
         [HttpPost("{versionId}/publish")]
-        public async Task<IActionResult> PublishVersion(string examId, string versionId) => Ok(new { message = $"Version {versionId} published as active" });
+        public async Task<IActionResult> PublishVersion(string examId, string versionId)
+        {
+            var success = await _examService.PublishVersionAsync(examId, versionId);
+            return success ? Ok(new { message = $"Version {versionId} published as active" }) : NotFound(new { message = "Exam or version not found" });
+        }
 
         [HttpPost("{versionId}/restore")]
-        public async Task<IActionResult> RestoreVersion(string examId, string versionId) => Ok(new { message = $"Rolled back to version {versionId}" });
+        public async Task<IActionResult> RestoreVersion(string examId, string versionId)
+        {
+            var success = await _examService.RestoreVersionAsync(examId, versionId);
+            return success ? Ok(new { message = $"Rolled back to version {versionId}" }) : NotFound(new { message = "Exam or version not found" });
+        }
     }
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using AuthService.Models;
 using AuthService.Services;
 using System.Security.Claims;
@@ -31,6 +32,7 @@ namespace AuthService.Controllers.V1
         // ==========================================
 
         [HttpPost("register")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -39,22 +41,30 @@ namespace AuthService.Controllers.V1
         }
 
         [HttpPost("login")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var (success, message, token, refreshToken, userDto) = await _authService.LoginAsync(request);
-            if (!success) return Unauthorized(new { message });
+            if (!success)
+            {
+                if (message == "MFA_REQUIRED")
+                {
+                    return Unauthorized(new { message = "MFA_REQUIRED", requiresMfa = true, userId = userDto?.UserId });
+                }
+                return Unauthorized(new { message });
+            }
             return Ok(new LoginResponse { Token = token, RefreshToken = refreshToken, User = userDto! });
         }
 
         [HttpPost("logout")]
         [Authorize]
-        public async Task<IActionResult> Logout()
+        public async Task<IActionResult> Logout([FromQuery] string? refreshToken = null)
         {
             var userId = GetCurrentUserId();
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-            await _authService.LogoutAsync(userId);
+            await _authService.LogoutAsync(userId, refreshToken);
             return Ok(new { message = "Logged out successfully" });
         }
 
@@ -67,15 +77,19 @@ namespace AuthService.Controllers.V1
         }
 
         [HttpPost("verify-email")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> VerifyEmail([FromBody] VerifyOtpRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
             var (success, message, token, refreshToken, userDto) = await _authService.VerifyOtpAsync(request);
             if (!success) return BadRequest(new { message });
+            if (string.IsNullOrEmpty(token))
+                return Ok(new { message, requiresApproval = true, user = userDto });
             return Ok(new LoginResponse { Token = token, RefreshToken = refreshToken, User = userDto! });
         }
 
         [HttpPost("resend-otp")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> ResendOtp([FromBody] ResendOtpRequest request)
         {
             var (success, message) = await _authService.ResendOtpAsync(request.Email, isPasswordReset: false);
@@ -83,6 +97,7 @@ namespace AuthService.Controllers.V1
         }
 
         [HttpPost("forgot-password")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> ForgotPassword([FromBody] ResendOtpRequest request)
         {
             var (success, message) = await _authService.ResendOtpAsync(request.Email, isPasswordReset: true);
@@ -90,6 +105,7 @@ namespace AuthService.Controllers.V1
         }
 
         [HttpPost("reset-password")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
         {
             var (success, message) = await _authService.ResetPasswordAsync(request);

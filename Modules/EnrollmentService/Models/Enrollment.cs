@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -18,16 +19,16 @@ namespace EnrollmentService.Models
         [BsonRepresentation(BsonType.String)]
         public string Id { get; set; } = Guid.NewGuid().ToString();
 
-        public string EnrollmentId { get; set; } = $"ENR-{new Random().Next(10000000, 99999999)}";
+        public string EnrollmentId { get; set; } = $"ENR-{RandomNumberGenerator.GetInt32(10_000_000, 100_000_000)}";
         public string UserId { get; set; } = string.Empty; // 9-digit ID
         public string CourseId { get; set; } = string.Empty;
-        
+
         public decimal CoinsPaid { get; set; }
-        public string WalletTransactionId { get; set; } = string.Empty; // To trace back to wallet
-        
+        public string WalletTransactionId { get; set; } = string.Empty;
+
         public EnrollmentStatus Status { get; set; } = EnrollmentStatus.PendingPayment;
 
         public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
-        public DateTime? ValidUntil { get; set; } // Agar course ki expiry date ho (e.g. 1 year)
+        public DateTime? ValidUntil { get; set; }
     }
 }

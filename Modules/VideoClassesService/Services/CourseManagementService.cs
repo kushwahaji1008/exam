@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using VideoClassesService.Models;
 
@@ -29,34 +31,30 @@ namespace VideoClassesService.Services
             var filters = new List<FilterDefinition<Course>>();
 
             if (status.HasValue)
-            {
                 filters.Add(filterBuilder.Eq(c => c.Status, status.Value));
-            }
-
             if (category.HasValue)
-            {
                 filters.Add(filterBuilder.Eq(c => c.Category, category.Value));
-            }
 
             var filter = filters.Count > 0 ? filterBuilder.And(filters) : filterBuilder.Empty;
             return await _mongoDb.Courses.Find(filter).SortByDescending(c => c.CreatedAt).ToListAsync();
         }
 
-        public async Task<Course?> GetCourseByIdAsync(string courseId)
-        {
-            return await _mongoDb.Courses.Find(c => c.Id == courseId).FirstOrDefaultAsync();
-        }
+        public async Task<Course?> GetCourseByIdAsync(string courseId) =>
+            await _mongoDb.Courses.Find(c => c.Id == courseId).FirstOrDefaultAsync();
 
         public async Task<bool> UpdateCourseAsync(string courseId, Course updatedCourse)
         {
+            var existing = await GetCourseByIdAsync(courseId);
+            if (existing == null) return false;
+            updatedCourse.Id = existing.Id;
+            updatedCourse.CreatedAt = existing.CreatedAt;
             updatedCourse.UpdatedAt = DateTime.UtcNow;
             var result = await _mongoDb.Courses.ReplaceOneAsync(c => c.Id == courseId, updatedCourse);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> DeleteCourseAsync(string courseId)
         {
-            // Delete associated chapters and lessons
             var course = await GetCourseByIdAsync(courseId);
             if (course != null)
             {
@@ -72,9 +70,9 @@ namespace VideoClassesService.Services
 
         public async Task<bool> PublishCourseAsync(string courseId)
         {
-            var update = Builders<Course>.Update.Set(c => c.Status, CourseStatus.Published);
+            var update = Builders<Course>.Update.Set(c => c.Status, CourseStatus.Published).Set(c => c.UpdatedAt, DateTime.UtcNow);
             var result = await _mongoDb.Courses.UpdateOneAsync(c => c.Id == courseId, update);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         #endregion
@@ -86,29 +84,26 @@ namespace VideoClassesService.Services
             chapter.CreatedAt = DateTime.UtcNow;
             await _mongoDb.Chapters.InsertOneAsync(chapter);
 
-            // Add chapter to course
-            var update = Builders<Course>.Update.Push(c => c.ChapterIds, chapter.Id);
+            var update = Builders<Course>.Update.AddToSet(c => c.ChapterIds, chapter.Id);
             await _mongoDb.Courses.UpdateOneAsync(c => c.Id == chapter.CourseId, update);
 
             return chapter;
         }
 
-        public async Task<List<Chapter>> GetChaptersByCourseAsync(string courseId)
-        {
-            return await _mongoDb.Chapters.Find(c => c.CourseId == courseId)
-                .SortBy(c => c.OrderIndex)
-                .ToListAsync();
-        }
+        public async Task<List<Chapter>> GetChaptersByCourseAsync(string courseId) =>
+            await _mongoDb.Chapters.Find(c => c.CourseId == courseId).SortBy(c => c.OrderIndex).ToListAsync();
 
-        public async Task<Chapter?> GetChapterByIdAsync(string chapterId)
-        {
-            return await _mongoDb.Chapters.Find(c => c.Id == chapterId).FirstOrDefaultAsync();
-        }
+        public async Task<Chapter?> GetChapterByIdAsync(string chapterId) =>
+            await _mongoDb.Chapters.Find(c => c.Id == chapterId).FirstOrDefaultAsync();
 
         public async Task<bool> UpdateChapterAsync(string chapterId, Chapter updatedChapter)
         {
+            var existing = await GetChapterByIdAsync(chapterId);
+            if (existing == null) return false;
+            updatedChapter.Id = existing.Id;
+            updatedChapter.CreatedAt = existing.CreatedAt;
             var result = await _mongoDb.Chapters.ReplaceOneAsync(c => c.Id == chapterId, updatedChapter);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> DeleteChapterAsync(string chapterId)
@@ -116,13 +111,11 @@ namespace VideoClassesService.Services
             var chapter = await GetChapterByIdAsync(chapterId);
             if (chapter != null)
             {
-                // Delete all lessons in this chapter
                 foreach (var lessonId in chapter.LessonIds)
                 {
                     await DeleteLessonAsync(lessonId);
                 }
 
-                // Remove from course
                 var update = Builders<Course>.Update.Pull(c => c.ChapterIds, chapterId);
                 await _mongoDb.Courses.UpdateOneAsync(c => c.Id == chapter.CourseId, update);
             }
@@ -140,29 +133,26 @@ namespace VideoClassesService.Services
             lesson.CreatedAt = DateTime.UtcNow;
             await _mongoDb.Lessons.InsertOneAsync(lesson);
 
-            // Add lesson to chapter
-            var update = Builders<Chapter>.Update.Push(c => c.LessonIds, lesson.Id);
+            var update = Builders<Chapter>.Update.AddToSet(c => c.LessonIds, lesson.Id);
             await _mongoDb.Chapters.UpdateOneAsync(c => c.Id == lesson.ChapterId, update);
 
             return lesson;
         }
 
-        public async Task<List<Lesson>> GetLessonsByChapterAsync(string chapterId)
-        {
-            return await _mongoDb.Lessons.Find(l => l.ChapterId == chapterId)
-                .SortBy(l => l.OrderIndex)
-                .ToListAsync();
-        }
+        public async Task<List<Lesson>> GetLessonsByChapterAsync(string chapterId) =>
+            await _mongoDb.Lessons.Find(l => l.ChapterId == chapterId).SortBy(l => l.OrderIndex).ToListAsync();
 
-        public async Task<Lesson?> GetLessonByIdAsync(string lessonId)
-        {
-            return await _mongoDb.Lessons.Find(l => l.Id == lessonId).FirstOrDefaultAsync();
-        }
+        public async Task<Lesson?> GetLessonByIdAsync(string lessonId) =>
+            await _mongoDb.Lessons.Find(l => l.Id == lessonId).FirstOrDefaultAsync();
 
         public async Task<bool> UpdateLessonAsync(string lessonId, Lesson updatedLesson)
         {
+            var existing = await GetLessonByIdAsync(lessonId);
+            if (existing == null) return false;
+            updatedLesson.Id = existing.Id;
+            updatedLesson.CreatedAt = existing.CreatedAt;
             var result = await _mongoDb.Lessons.ReplaceOneAsync(l => l.Id == lessonId, updatedLesson);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> DeleteLessonAsync(string lessonId)
@@ -170,7 +160,6 @@ namespace VideoClassesService.Services
             var lesson = await GetLessonByIdAsync(lessonId);
             if (lesson != null)
             {
-                // Remove from chapter
                 var update = Builders<Chapter>.Update.Pull(c => c.LessonIds, lessonId);
                 await _mongoDb.Chapters.UpdateOneAsync(c => c.Id == lesson.ChapterId, update);
             }
@@ -183,7 +172,7 @@ namespace VideoClassesService.Services
         {
             var update = Builders<Lesson>.Update.Inc(l => l.ViewCount, 1);
             var result = await _mongoDb.Lessons.UpdateOneAsync(l => l.Id == lessonId, update);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         #endregion
@@ -192,10 +181,14 @@ namespace VideoClassesService.Services
 
         public async Task<List<Course>> SearchCoursesAsync(string query)
         {
+            if (string.IsNullOrWhiteSpace(query))
+                return await GetAllCoursesAsync();
+
+            var escaped = Regex.Escape(query.Trim());
             var filter = Builders<Course>.Filter.Or(
-                Builders<Course>.Filter.Regex(c => c.Title, new MongoDB.Bson.BsonRegularExpression(query, "i")),
-                Builders<Course>.Filter.Regex(c => c.Description, new MongoDB.Bson.BsonRegularExpression(query, "i")),
-                Builders<Course>.Filter.AnyIn(c => c.Tags, new[] { query })
+                Builders<Course>.Filter.Regex(c => c.Title, new BsonRegularExpression(escaped, "i")),
+                Builders<Course>.Filter.Regex(c => c.Description, new BsonRegularExpression(escaped, "i")),
+                Builders<Course>.Filter.AnyIn(c => c.Tags, new[] { query.Trim() })
             );
 
             return await _mongoDb.Courses.Find(filter).ToListAsync();

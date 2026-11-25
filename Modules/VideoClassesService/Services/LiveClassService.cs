@@ -145,22 +145,20 @@ namespace VideoClassesService.Services
             var option = poll.Options.FirstOrDefault(o => o.Id == optionId);
             if (option == null) return false;
 
-            // Check if already voted
-            if (poll.Options.Any(o => o.VotedBy.Contains(studentId)))
+            // FIX: Remove previous vote first (using LINQ for correctness, not nested foreach)
+            var previousVote = poll.Options.FirstOrDefault(o => o.VotedBy.Contains(studentId));
+            if (previousVote != null)
             {
-                // Remove previous vote
-                foreach (var opt in poll.Options)
-                {
-                    if (opt.VotedBy.Contains(studentId))
-                    {
-                        opt.VotedBy.Remove(studentId);
-                        opt.Votes--;
-                    }
-                }
+                previousVote.VotedBy.Remove(studentId);
+                previousVote.Votes = Math.Max(0, previousVote.Votes - 1); // Guard: never go below 0
             }
 
-            option.VotedBy.Add(studentId);
-            option.Votes++;
+            // Add vote to new option (only if not already the same)
+            if (previousVote?.Id != optionId)
+            {
+                option.VotedBy.Add(studentId);
+                option.Votes++;
+            }
 
             var update = Builders<LiveClass>.Update.Set(l => l.Polls, liveClass.Polls);
             var result = await _mongoDb.LiveClasses.UpdateOneAsync(l => l.Id == liveClassId, update);

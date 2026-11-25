@@ -195,7 +195,7 @@ namespace AuthService.Controllers.V1
         // for administration only 
 
         [HttpPost("{userId}/approve")]
-        [Authorize(Roles = "1,2,Admin,SuperAdmin")] // Sirf Admin ya SuperAdmin isko call kar payenge
+        [Authorize(Roles = "Admin,SuperAdmin")] // Admin and SuperAdmin only
         public async Task<IActionResult> ApproveUser(string userId)
         {
             var success = await _userService.ApproveUserAsync(userId);

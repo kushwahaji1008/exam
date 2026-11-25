@@ -103,6 +103,11 @@ namespace NotificationService.Models
 
         public TimeSpan QuietHoursEnd { get; set; } = TimeSpan.FromHours(8);
 
+        // FIX: Store user's IANA timezone ID so quiet hours are applied in local time, not UTC.
+        // e.g., "Asia/Kolkata", "America/New_York", "Europe/London"
+        // Default to UTC if not set.
+        public string TimeZoneId { get; set; } = "UTC";
+
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 

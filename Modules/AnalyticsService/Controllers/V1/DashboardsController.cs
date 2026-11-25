@@ -1,5 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using AnalyticsService.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace AnalyticsService.Controllers
 {
@@ -9,19 +11,33 @@ namespace AnalyticsService.Controllers
     [Authorize]
     public class DashboardsController : ControllerBase
     {
+        private readonly AnalyticsManagementService _analytics;
+
+        public DashboardsController(AnalyticsManagementService analytics)
+        {
+            _analytics = analytics;
+        }
+
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private string? GetRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+
         [HttpGet("dashboard")]
-        public IActionResult GetGeneralDashboard() => Ok(new { overview = "General stats" });
+        public async Task<IActionResult> GetGeneralDashboard() =>
+            Ok(await _analytics.GetGeneralDashboardAsync(GetUserId(), GetRole()));
 
         [HttpGet("admin-dashboard")]
         [Authorize(Roles = "Admin,SuperAdmin")]
-        public IActionResult GetAdminDashboard() => Ok(new { totalUsers = 1200, activeExams = 45, revenue = 8500 });
+        public async Task<IActionResult> GetAdminDashboard() =>
+            Ok(await _analytics.GetAdminDashboardAsync());
 
         [HttpGet("student-dashboard")]
-        [Authorize(Roles = "Student")]
-        public IActionResult GetStudentDashboard() => Ok(new { examsTaken = 12, averageScore = 78.5, upcomingExams = 2 });
+        [Authorize(Roles = "Student,Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetStudentDashboard() =>
+            Ok(await _analytics.GetStudentDashboardAsync(GetUserId() ?? string.Empty));
 
         [HttpGet("instructor-dashboard")]
-        [Authorize(Roles = "Teacher,Instructor")]
-        public IActionResult GetInstructorDashboard() => Ok(new { coursesCreated = 5, totalStudentsEnrolled = 340 });
+        [Authorize(Roles = "Teacher,Instructor,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetInstructorDashboard() =>
+            Ok(await _analytics.GetInstructorDashboardAsync(GetUserId() ?? string.Empty));
     }
 }

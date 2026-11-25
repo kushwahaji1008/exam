@@ -8,35 +8,58 @@ namespace StorageService.Services
 {
     public class GoogleDriveStorageService : IStorageService
     {
-        private readonly DriveService _driveService;
+        private readonly DriveService? _driveService;
         private readonly string _folderId;
+        private readonly ILogger<GoogleDriveStorageService> _logger;
+        private readonly bool _isConfigured;
 
-        public GoogleDriveStorageService(IConfiguration configuration)
+        public GoogleDriveStorageService(IConfiguration configuration, ILogger<GoogleDriveStorageService> logger)
         {
-            // Apne appsettings.json se Drive Folder ID aur Credentials Path nikalna
-            _folderId = configuration["GoogleDrive:FolderId"] 
-                        ?? throw new ArgumentNullException("Google Drive Folder ID is missing.");
-            
-            var credentialsPath = configuration["GoogleDrive:CredentialsPath"] 
-                        ?? throw new ArgumentNullException("Credentials Path is missing.");
+            _logger = logger;
 
-            // Google Authentication setup
-            GoogleCredential credential;
-            using (var stream = new FileStream(credentialsPath, FileMode.Open, FileAccess.Read))
+            _folderId = configuration["GoogleDrive:FolderId"] ?? string.Empty;
+            var credentialsPath = configuration["GoogleDrive:CredentialsPath"] ?? string.Empty;
+
+            // FIX: Don't throw at startup — log a warning instead, fail gracefully at call time.
+            if (string.IsNullOrEmpty(_folderId) || _folderId.StartsWith("SET_VIA_ENV") ||
+                string.IsNullOrEmpty(credentialsPath) || credentialsPath.StartsWith("SET_VIA_ENV") ||
+                !File.Exists(credentialsPath))
             {
-                credential = GoogleCredential.FromStream(stream)
-                                .CreateScoped(DriveService.Scope.Drive);
+                _logger.LogWarning("GoogleDriveStorageService: Credentials not configured or file not found at '{Path}'. File upload/delete will return errors.", credentialsPath);
+                _isConfigured = false;
+                _driveService = null;
+                return;
             }
 
-            _driveService = new DriveService(new BaseClientService.Initializer
+            try
             {
-                HttpClientInitializer = credential,
-                ApplicationName = "LMS Platform"
-            });
+                GoogleCredential credential;
+                using (var stream = new FileStream(credentialsPath, FileMode.Open, FileAccess.Read))
+                {
+                    credential = GoogleCredential.FromStream(stream)
+                                    .CreateScoped(DriveService.Scope.Drive);
+                }
+
+                _driveService = new DriveService(new BaseClientService.Initializer
+                {
+                    HttpClientInitializer = credential,
+                    ApplicationName = "LMS Platform"
+                });
+                _isConfigured = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "GoogleDriveStorageService: Failed to initialize Google Drive client.");
+                _isConfigured = false;
+                _driveService = null;
+            }
         }
 
         public async Task<string> UploadFileAsync(IFormFile file, string folderName)
         {
+            if (!_isConfigured || _driveService == null)
+                throw new InvalidOperationException("Google Drive storage is not configured. Set GoogleDrive__FolderId and GoogleDrive__CredentialsPath environment variables.");
+
             var fileExtension = Path.GetExtension(file.FileName);
             var uniqueFileName = $"{folderName}_{Guid.NewGuid()}_{DateTime.UtcNow.Ticks}{fileExtension}";
 
@@ -81,6 +104,9 @@ namespace StorageService.Services
 
         public async Task<bool> DeleteFileAsync(string fileUrl)
         {
+            if (!_isConfigured || _driveService == null)
+                return false;
+
             try
             {
                 // Extract File ID from the URL (e.g., https://drive.google.com/uc?id=XXXXXX)

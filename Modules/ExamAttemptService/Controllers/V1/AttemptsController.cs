@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using ExamAttemptService.Models;
 using ExamAttemptService.Services;
-using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ExamAttemptService.Controllers
 {
@@ -19,49 +19,53 @@ namespace ExamAttemptService.Controllers
             _logger = logger;
         }
 
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private string? GetUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+        private bool IsStaff() => GetUserRole() is "Teacher" or "Admin" or "SuperAdmin";
+
         #region 1. Attempts (CRUD)
 
         [HttpGet]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetAllAttempts()
         {
-            // TODO: Implement GetAllAttemptsAsync in _attemptService
-            return Ok(new { message = "List of all attempts" });
+            var attempts = await _attemptService.GetAllAttemptsAsync();
+            return Ok(attempts.Select(AttemptManagementService.ToAttemptDto));
         }
 
         [HttpPost]
-        [Authorize(Roles = "0,Student")]
+        [Authorize(Roles = "Student,Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateAttempt([FromBody] StartExamRequest request)
         {
-            // Maps to your existing Start logic, creating the attempt record
-            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
             var userName = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
 
-            var attempt = await _attemptService.StartExamAsync(request.ExamId, userId, userName);
-            return Ok(new { message = "Attempt created", attempt });
+            var (success, message, attempt) = await _attemptService.CreateAndValidateAttemptAsync(request.ExamId, userId, userName);
+            if (!success || attempt == null)
+                return BadRequest(new { message });
+
+            return Ok(new { message, attempt });
         }
 
         [HttpGet("{attemptId}")]
         [Authorize]
         public async Task<IActionResult> GetAttempt(string attemptId)
         {
-            var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-
             var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
             if (attempt == null) return NotFound(new { message = "Attempt not found" });
 
-            if (role == "Student" && attempt.StudentId != userId) return Forbid();
-
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
             return Ok(attempt);
         }
 
         [HttpDelete("{attemptId}")]
-        [Authorize(Roles = "1,2,3,Admin,SuperAdmin")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteAttempt(string attemptId)
         {
-            // TODO: Implement DeleteAttemptAsync in _attemptService
-            return Ok(new { message = $"Attempt {attemptId} deleted successfully" });
+            var deleted = await _attemptService.DeleteAttemptAsync(attemptId);
+            return deleted ? Ok(new { message = $"Attempt {attemptId} deleted successfully" }) : NotFound(new { message = "Attempt not found" });
         }
 
         #endregion
@@ -69,62 +73,75 @@ namespace ExamAttemptService.Controllers
         #region 2. Start/End Lifecycle
 
         [HttpPost("{attemptId}/start")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> StartExam(string attemptId)
         {
-            // TODO: Implement logic to formally begin the timer/session for an existing attempt
-            return Ok(new { message = "Exam session started" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var ok = await _attemptService.MarkAttemptStartedAsync(attemptId);
+            return ok ? Ok(new { message = "Exam session started", startedAt = attempt.StartedAt }) : BadRequest(new { message = "Attempt cannot be started" });
         }
 
         [HttpPost("{attemptId}/pause")]
-        [Authorize(Roles = "0,Student,Teacher,Admin")]
+        [Authorize]
         public async Task<IActionResult> PauseAttempt(string attemptId)
         {
-            // TODO: Implement PauseAttemptAsync
-            return Ok(new { message = "Exam paused" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var success = await _attemptService.PauseAttemptAsync(attemptId);
+            return success ? Ok(new { message = "Exam paused" }) : BadRequest(new { message = "Attempt is not currently in progress" });
         }
 
         [HttpPost("{attemptId}/resume")]
-        [Authorize(Roles = "0,Student,Teacher,Admin")]
+        [Authorize]
         public async Task<IActionResult> ResumeAttempt(string attemptId)
         {
-            // TODO: Implement ResumeAttemptAsync
-            return Ok(new { message = "Exam resumed" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var success = await _attemptService.ResumeAttemptAsync(attemptId);
+            return success ? Ok(new { message = "Exam resumed" }) : BadRequest(new { message = "Attempt is not paused" });
         }
 
         [HttpPost("{attemptId}/submit")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> SubmitExam(string attemptId)
         {
-            var userId = User.FindFirst("userId")?.Value;
             var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
-
             if (attempt == null) return NotFound(new { message = "Attempt not found" });
-            if (attempt.StudentId != userId) return Forbid();
-            if (attempt.Status != AttemptStatus.InProgress) 
+            if (attempt.StudentId != GetUserId() && !IsStaff()) return Forbid();
+            if (attempt.Status is not (AttemptStatus.InProgress or AttemptStatus.Paused))
                 return BadRequest(new { message = "Exam already submitted or not in progress" });
 
             var success = await _attemptService.SubmitExamAsync(attemptId);
             if (!success) return BadRequest(new { message = "Failed to submit exam" });
 
-            return Ok(new { message = "Exam submitted successfully" });
+            var updated = await _attemptService.GetAttemptByIdAsync(attemptId);
+            return Ok(new { message = "Exam submitted successfully", attempt = updated != null ? AttemptManagementService.ToAttemptDto(updated) : null });
         }
 
         [HttpPost("{attemptId}/force-submit")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ForceSubmitExam(string attemptId)
         {
-            // TODO: Implement ForceSubmit logic bypassing student checks
-            var success = await _attemptService.SubmitExamAsync(attemptId);
-            return Ok(new { message = "Exam force-submitted" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+
+            var success = await _attemptService.SubmitExamAsync(attemptId, autoSubmit: true);
+            return success ? Ok(new { message = "Exam force-submitted" }) : BadRequest(new { message = "Attempt already in a terminal state" });
         }
 
         [HttpPost("{attemptId}/terminate")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> TerminateExam(string attemptId)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> TerminateExam(string attemptId, [FromQuery] string? reason = null)
         {
-            // TODO: Implement Terminate logic (e.g., due to cheating/violation)
-            return Ok(new { message = "Exam terminated" });
+            var success = await _attemptService.TerminateAttemptAsync(attemptId, reason ?? "Terminated by proctor/admin");
+            return success ? Ok(new { message = "Exam terminated" }) : NotFound(new { message = "Attempt not found" });
         }
 
         #endregion
@@ -132,38 +149,46 @@ namespace ExamAttemptService.Controllers
         #region 3. Questions & Answers
 
         [HttpGet("{attemptId}/questions")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> GetQuestions(string attemptId)
         {
-            // TODO: Retrieve all questions for this attempt
-            return Ok(new { message = "Questions fetched" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var (_, questions) = await _attemptService.GetAttemptQuestionsAsync(attemptId);
+            return Ok(questions);
         }
 
         [HttpGet("{attemptId}/questions/{questionId}")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> GetQuestion(string attemptId, string questionId)
         {
-            // TODO: Retrieve a specific question
-            return Ok(new { message = $"Question {questionId} fetched" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var question = await _attemptService.GetAttemptQuestionAsync(attemptId, questionId);
+            return question != null ? Ok(question) : NotFound(new { message = "Question not found in this attempt" });
         }
 
         [HttpPost("{attemptId}/questions/{questionId}/answer")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> SaveAnswer(string attemptId, string questionId, [FromBody] SubmitAnswerRequest request)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = GetUserId();
             var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
 
             if (attempt == null) return NotFound(new { message = "Attempt not found" });
             if (attempt.StudentId != userId) return Forbid();
-            if (attempt.Status != AttemptStatus.InProgress) 
+            if (attempt.Status != AttemptStatus.InProgress)
                 return BadRequest(new { message = "Cannot modify answers after submission" });
 
             var answer = new Answer
             {
-                QuestionId = questionId, // overridden from path variable
+                QuestionId = questionId,
                 SelectedOption = request.SelectedOption,
-                SelectedOptions = request.SelectedOptions,
+                SelectedOptions = request.SelectedOptions ?? new List<string>(),
                 TextAnswer = request.TextAnswer,
                 CodeAnswer = request.CodeAnswer
             };
@@ -175,19 +200,22 @@ namespace ExamAttemptService.Controllers
         }
 
         [HttpPut("{attemptId}/questions/{questionId}/answer")]
-        [Authorize(Roles = "0,Student")]
-        public async Task<IActionResult> UpdateAnswer(string attemptId, string questionId, [FromBody] SubmitAnswerRequest request)
-        {
-            // Map to the exact same logic as POST or implement separate Update logic in service
-            return await SaveAnswer(attemptId, questionId, request);
-        }
+        [Authorize]
+        public Task<IActionResult> UpdateAnswer(string attemptId, string questionId, [FromBody] SubmitAnswerRequest request)
+            => SaveAnswer(attemptId, questionId, request);
 
         [HttpDelete("{attemptId}/questions/{questionId}/answer")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> ClearAnswer(string attemptId, string questionId)
         {
-            // TODO: Implement ClearAnswerAsync in _attemptService
-            return Ok(new { message = "Answer cleared successfully" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (attempt.StudentId != GetUserId()) return Forbid();
+            if (attempt.Status != AttemptStatus.InProgress)
+                return BadRequest(new { message = "Cannot modify answers after submission" });
+
+            var success = await _attemptService.ClearAnswerAsync(attemptId, questionId);
+            return success ? Ok(new { message = "Answer cleared successfully" }) : BadRequest(new { message = "Failed to clear answer" });
         }
 
         #endregion
@@ -195,59 +223,63 @@ namespace ExamAttemptService.Controllers
         #region 4. Navigation
 
         [HttpPost("{attemptId}/questions/{questionId}/next")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> NextQuestion(string attemptId, string questionId)
         {
-            // TODO: Log navigation or return next question ID
-            return Ok(new { message = "Moved to next question" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var nextQuestionId = await _attemptService.NavigateQuestionAsync(attemptId, questionId, +1);
+            return Ok(new { message = "Moved to next question", nextQuestionId });
         }
 
         [HttpPost("{attemptId}/questions/{questionId}/previous")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> PreviousQuestion(string attemptId, string questionId)
         {
-            // TODO: Log navigation or return previous question ID
-            return Ok(new { message = "Moved to previous question" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var previousQuestionId = await _attemptService.NavigateQuestionAsync(attemptId, questionId, -1);
+            return Ok(new { message = "Moved to previous question", previousQuestionId });
         }
 
         [HttpPost("{attemptId}/questions/{questionId}/mark-review")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> MarkForReview(string attemptId, string questionId)
         {
-            var userId = User.FindFirst("userId")?.Value;
             var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
-
             if (attempt == null) return NotFound(new { message = "Attempt not found" });
-            if (attempt.StudentId != userId) return Forbid();
+            if (attempt.StudentId != GetUserId()) return Forbid();
 
             var success = await _attemptService.ToggleFlagAsync(attemptId, questionId, true);
-            if (!success) return BadRequest(new { message = "Failed to mark for review" });
-
-            return Ok(new { message = "Question marked for review" });
+            return success ? Ok(new { message = "Question marked for review" }) : BadRequest(new { message = "Failed to mark for review" });
         }
 
         [HttpPost("{attemptId}/questions/{questionId}/unmark-review")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> UnmarkForReview(string attemptId, string questionId)
         {
-            var userId = User.FindFirst("userId")?.Value;
             var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
-
             if (attempt == null) return NotFound(new { message = "Attempt not found" });
-            if (attempt.StudentId != userId) return Forbid();
+            if (attempt.StudentId != GetUserId()) return Forbid();
 
             var success = await _attemptService.ToggleFlagAsync(attemptId, questionId, false);
-            if (!success) return BadRequest(new { message = "Failed to unmark for review" });
-
-            return Ok(new { message = "Question review mark removed" });
+            return success ? Ok(new { message = "Question review mark removed" }) : BadRequest(new { message = "Failed to unmark for review" });
         }
 
         [HttpGet("{attemptId}/navigation")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> GetNavigationState(string attemptId)
         {
-            // TODO: Return a map of questions showing answered/flagged/unvisited states
-            return Ok(new { message = "Navigation state fetched" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var nav = await _attemptService.GetNavigationStateAsync(attemptId);
+            return nav != null ? Ok(nav) : NotFound(new { message = "Attempt not found" });
         }
 
         #endregion
@@ -258,71 +290,85 @@ namespace ExamAttemptService.Controllers
         [Authorize]
         public async Task<IActionResult> GetTimer(string attemptId)
         {
-            // TODO: Return time remaining based on start time and allotted time
-            return Ok(new { timeRemainingSeconds = 3600 });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            var remaining = await _attemptService.CalculateTimeRemainingSecondsAsync(attempt);
+            return Ok(new
+            {
+                attemptId,
+                timeRemainingSeconds = remaining,
+                extraTimeGrantedMinutes = attempt.ExtraTimeGrantedMinutes,
+                status = attempt.Status.ToString(),
+                isExpired = remaining <= 0 && attempt.Status == AttemptStatus.InProgress
+            });
         }
 
         [HttpPost("{attemptId}/timer/sync")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> SyncTimer(string attemptId, [FromBody] TimerSyncRequest request)
         {
-            // TODO: Implement timer sync logic (e.g., handling client disconnects)
-            return Ok(new { message = "Timer synchronized" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (attempt.StudentId != GetUserId()) return Forbid();
+
+            await _attemptService.SyncTimerAsync(attemptId, request.ClientRemainingSeconds, request.CurrentQuestionId);
+            var serverRemaining = await _attemptService.CalculateTimeRemainingSecondsAsync(attempt);
+            return Ok(new { message = "Timer synchronized", timeRemainingSeconds = serverRemaining });
         }
 
         [HttpPost("{attemptId}/extend-time")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ExtendTime(string attemptId, [FromBody] ExtendTimeRequest request)
         {
-            // TODO: Implement time extension logic in _attemptService
-            return Ok(new { message = $"Added {request.ExtraMinutes} minutes" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var success = await _attemptService.ExtendTimeAsync(attemptId, request.ExtraMinutes, request.Reason);
+            return success ? Ok(new { message = $"Added {request.ExtraMinutes} minutes" }) : NotFound(new { message = "Attempt not found" });
         }
 
         #endregion
 
         #region 6. Candidate Attempts
 
-        // Uses "~/" to override the controller's route prefix
         [HttpGet("~/api/v1/users/{userId}/attempts")]
         [Authorize]
         public async Task<IActionResult> GetUserAttempts(string userId)
         {
-            var requestingUserId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-
-            if (role == "Student" && requestingUserId != userId) return Forbid();
+            if (!IsStaff() && GetUserId() != userId) return Forbid();
 
             var attempts = await _attemptService.GetStudentAttemptsAsync(userId);
-            var attemptDtos = attempts.Select(AttemptManagementService.ToAttemptDto).ToList();
-            return Ok(attemptDtos);
+            return Ok(attempts.Select(AttemptManagementService.ToAttemptDto).ToList());
         }
 
-        // Uses "~/" to override the controller's route prefix
         [HttpGet("~/api/v1/exams/{examId}/attempts")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetExamAttempts(string examId)
         {
             var attempts = await _attemptService.GetExamAttemptsAsync(examId);
-            var attemptDtos = attempts.Select(AttemptManagementService.ToAttemptDto).ToList();
-            return Ok(attemptDtos);
+            return Ok(attempts.Select(AttemptManagementService.ToAttemptDto).ToList());
         }
 
         [HttpGet("{attemptId}/events")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetAttemptEvents(string attemptId)
         {
-            // TODO: Fetch activity logs/events for the attempt
-            return Ok(new { message = "Events fetched" });
+            var events = await _attemptService.GetAttemptEventsAsync(attemptId);
+            if (events == null) return NotFound(new { message = "Attempt not found" });
+            return Ok(events);
         }
 
-        // Keeping your old /log endpoint logic slightly adjusted just in case you need POST
         [HttpPost("{attemptId}/log")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> LogActivity(string attemptId, [FromBody] ActivityLogRequest request)
         {
-            var success = await _attemptService.LogActivityAsync(attemptId, request.Activity);
-            if (!success) return BadRequest(new { message = "Failed to log activity" });
-            return Ok(new { message = "Activity logged" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (attempt.StudentId != GetUserId() && !IsStaff()) return Forbid();
+
+            var success = await _attemptService.LogActivityAsync(attemptId, request.Activity, request.EventType, request.QuestionId);
+            return success ? Ok(new { message = "Activity logged" }) : BadRequest(new { message = "Failed to log activity" });
         }
 
         #endregion
@@ -330,27 +376,50 @@ namespace ExamAttemptService.Controllers
         #region 7. Recovery
 
         [HttpPost("{attemptId}/recover")]
-        [Authorize(Roles = "0,Student,Admin")]
+        [Authorize]
         public async Task<IActionResult> RecoverAttempt(string attemptId)
         {
-            // TODO: Implement logic to recover a crashed browser session
-            return Ok(new { message = "Session recovered" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (!IsStaff() && attempt.StudentId != GetUserId()) return Forbid();
+
+            if (attempt.Status == AttemptStatus.Paused)
+                await _attemptService.ResumeAttemptAsync(attemptId);
+
+            await _attemptService.LogActivityEventAsync(attemptId, EventType.Reconnected, "Session recovered");
+            var remaining = await _attemptService.CalculateTimeRemainingSecondsAsync(attempt);
+            return Ok(new { message = "Session recovered", attempt, timeRemainingSeconds = remaining });
         }
 
         [HttpPost("{attemptId}/resume-session")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> ResumeSession(string attemptId)
         {
-            // TODO: Handle returning to an active session
-            return Ok(new { message = "Session resumed" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (attempt.StudentId != GetUserId() && !IsStaff()) return Forbid();
+
+            if (attempt.Status == AttemptStatus.Paused)
+                await _attemptService.ResumeAttemptAsync(attemptId);
+
+            var remaining = await _attemptService.CalculateTimeRemainingSecondsAsync(attempt);
+            return Ok(new { message = "Session resumed", attempt, timeRemainingSeconds = remaining });
         }
 
         [HttpPost("{attemptId}/sync")]
-        [Authorize(Roles = "0,Student")]
-        public async Task<IActionResult> SyncAttempt(string attemptId)
+        [Authorize]
+        public async Task<IActionResult> SyncAttempt(string attemptId, [FromBody] SyncAttemptRequest? request = null)
         {
-            // TODO: Implement bulk sync of local-storage answers to server
-            return Ok(new { message = "Attempt state synchronized" });
+            var attempt = await _attemptService.GetAttemptByIdAsync(attemptId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found" });
+            if (attempt.StudentId != GetUserId()) return Forbid();
+            if (attempt.Status != AttemptStatus.InProgress)
+                return BadRequest(new { message = "Attempt is not in progress" });
+
+            var items = request?.Answers ?? new List<SyncAnswerItem>();
+            await _attemptService.SyncAnswersBulkAsync(attemptId, items, request?.CurrentQuestionId);
+            var remaining = await _attemptService.CalculateTimeRemainingSecondsAsync(attempt);
+            return Ok(new { message = "Attempt state synchronized", syncedCount = items.Count, timeRemainingSeconds = remaining });
         }
 
         #endregion
@@ -358,35 +427,36 @@ namespace ExamAttemptService.Controllers
         #region 8. Admin Interventions
 
         [HttpPost("{attemptId}/invalidate")]
-        [Authorize(Roles = "1,2,3,Admin,SuperAdmin")]
-        public async Task<IActionResult> InvalidateAttempt(string attemptId)
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<IActionResult> InvalidateAttempt(string attemptId, [FromQuery] string? reason = null)
         {
-            // TODO: Implement invalidation logic (e.g., mark as void due to malpractice)
-            return Ok(new { message = "Attempt invalidated" });
+            var success = await _attemptService.InvalidateAttemptAsync(attemptId, reason ?? "Invalidated by administrator");
+            return success ? Ok(new { message = "Attempt invalidated" }) : NotFound(new { message = "Attempt not found" });
         }
 
         [HttpPost("{attemptId}/restore")]
-        [Authorize(Roles = "1,2,3,Admin,SuperAdmin")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
         public async Task<IActionResult> RestoreAttempt(string attemptId)
         {
-            // TODO: Restore a previously deleted/invalidated attempt
-            return Ok(new { message = "Attempt restored" });
+            var success = await _attemptService.RestoreAttemptAsync(attemptId);
+            return success ? Ok(new { message = "Attempt restored" }) : NotFound(new { message = "Attempt not found" });
         }
 
         [HttpPost("{attemptId}/reopen")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ReopenAttempt(string attemptId)
         {
-            // TODO: Reopen a submitted exam for a student
-            return Ok(new { message = "Attempt reopened for modifications" });
+            var success = await _attemptService.ReopenAttemptAsync(attemptId);
+            return success ? Ok(new { message = "Attempt reopened for modifications" }) : NotFound(new { message = "Attempt not found" });
         }
 
         [HttpPost("{attemptId}/grant-extra-time")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GrantExtraTime(string attemptId, [FromBody] ExtendTimeRequest request)
         {
-            // TODO: Add extra minutes to a specific attempt
-            return Ok(new { message = $"Granted {request.ExtraMinutes} extra minutes" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var success = await _attemptService.ExtendTimeAsync(attemptId, request.ExtraMinutes, request.Reason);
+            return success ? Ok(new { message = $"Granted {request.ExtraMinutes} extra minutes" }) : NotFound(new { message = "Attempt not found" });
         }
 
         #endregion
@@ -396,22 +466,5 @@ namespace ExamAttemptService.Controllers
         {
             return Ok(new { status = "healthy", service = "ExamAttemptService", version = "v1", timestamp = DateTime.UtcNow });
         }
-    }
-
-    // Example additional DTOs needed for the new endpoints
-    public class TimerSyncRequest
-    {
-        public int ClientRemainingSeconds { get; set; }
-    }
-
-    public class ExtendTimeRequest
-    {
-        public int ExtraMinutes { get; set; }
-        public string Reason { get; set; } = string.Empty;
-    }
-
-    public class ActivityLogRequest
-    {
-        public string Activity { get; set; } = string.Empty;
     }
 }

@@ -18,11 +18,10 @@ namespace ExamService.Models
         public string Description { get; set; } = string.Empty;
         public string ThumbnailUrl { get; set; } = string.Empty;
 
-        // Security: Price hacker block
-        [Range(0, 1000)]
+        [Range(0, 1000000)]
         public decimal Price { get; set; } = 0.0m;
-        
-        [Range(0, 1000)]
+
+        [Range(0, 1000000)]
         public decimal DiscountPrice { get; set; } = 0.0m;
 
         public bool IsPublished { get; set; } = false;
@@ -41,7 +40,17 @@ namespace ExamService.Models
     {
         [Required] public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
-        [Range(0, 1000)] public decimal Price { get; set; }
+        [Range(0, 1000000)] public decimal Price { get; set; }
+        [Range(0, 1000000)] public decimal DiscountPrice { get; set; }
+    }
+
+    public class UpdateExamSeriesRequest
+    {
+        [Required] public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        [Range(0, 1000000)] public decimal Price { get; set; }
+        [Range(0, 1000000)] public decimal DiscountPrice { get; set; }
+        public bool IsPublished { get; set; }
     }
 
     public class AddExamToSeriesRequest

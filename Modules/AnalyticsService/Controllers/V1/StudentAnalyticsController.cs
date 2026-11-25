@@ -1,5 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using AnalyticsService.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace AnalyticsService.Controllers
 {
@@ -9,28 +11,47 @@ namespace AnalyticsService.Controllers
     [Authorize]
     public class StudentAnalyticsController : ControllerBase
     {
+        private readonly AnalyticsManagementService _analytics;
+
+        public StudentAnalyticsController(AnalyticsManagementService analytics)
+        {
+            _analytics = analytics;
+        }
+
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private bool CanAccessUser(string userId) =>
+            GetUserId() == userId || User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin";
+
         [HttpGet]
-        public IActionResult GetUserSummary(string userId) => Ok(new { userId, totalScore = 850 });
+        public async Task<IActionResult> GetUserSummary(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("performance")]
-        public IActionResult GetPerformance(string userId) => Ok(new { percentile = 88, gpa = 3.6 });
+        public async Task<IActionResult> GetPerformance(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("progress")]
-        public IActionResult GetProgress(string userId) => Ok(new { courseCompletionRate = "75%" });
+        public async Task<IActionResult> GetProgress(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("accuracy")]
-        public IActionResult GetAccuracy(string userId) => Ok(new { overallAccuracy = "82.5%" });
+        public async Task<IActionResult> GetAccuracy(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("attempts")]
-        public IActionResult GetAttemptsHistory(string userId) => Ok(new { totalAttempts = 42, passed = 38 });
+        public async Task<IActionResult> GetAttemptsHistory(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("time-spent")]
-        public IActionResult GetTimeSpent(string userId) => Ok(new { totalHours = 120.5 });
+        public async Task<IActionResult> GetTimeSpent(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("strengths")]
-        public IActionResult GetStrengths(string userId) => Ok(new { topTopics = new[] { "Algebra", "Physics" } });
+        public async Task<IActionResult> GetStrengths(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
 
         [HttpGet("weaknesses")]
-        public IActionResult GetWeaknesses(string userId) => Ok(new { weakTopics = new[] { "Organic Chemistry" } });
+        public async Task<IActionResult> GetWeaknesses(string userId) =>
+            CanAccessUser(userId) ? Ok(await _analytics.GetStudentAnalyticsAsync(userId)) : Forbid();
     }
 }

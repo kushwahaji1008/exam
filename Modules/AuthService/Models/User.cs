@@ -70,9 +70,16 @@ namespace AuthService.Models
         public int CurrentStreak { get; set; } = 0;
         public UserBadge Badge { get; set; } = UserBadge.Bronze;
 
-        // OTP Fields for Email Verification
+        // OTP Fields for Email Verification / Password Reset
         public string? Otp { get; set; }
         public DateTime? OtpExpiry { get; set; }
+        public int OtpAttemptCount { get; set; } = 0;
+        public string? PendingEmail { get; set; }
+
+        // Dedicated OTP Fields for Phone Verification (isolated from Email OTP)
+        public string? PhoneOtp { get; set; }
+        public DateTime? PhoneOtpExpiry { get; set; }
+        public int PhoneOtpAttemptCount { get; set; } = 0;
 
         // Sessions Management (Replaces single RefreshToken fields for multi-device support)
         public List<ActiveSession> Sessions { get; set; } = new();

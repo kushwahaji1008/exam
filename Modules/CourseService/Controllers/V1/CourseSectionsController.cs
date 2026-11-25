@@ -45,8 +45,8 @@ namespace CourseService.Controllers.V1
         [HttpPatch("{sectionId}")]
         public async Task<IActionResult> PatchSection(string courseId, string sectionId, [FromBody] object request)
         {
-            // Implementation logic in service
-            return Ok(new { message = "Section patched successfully" });
+            var success = await _courseService.PatchSectionAsync(courseId, sectionId, request);
+            return success ? Ok(new { message = "Section patched successfully" }) : NotFound(new { message = "Course or section not found, or invalid payload" });
         }
 
         [HttpDelete("{sectionId}")]

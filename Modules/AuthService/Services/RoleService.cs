@@ -56,42 +56,44 @@ namespace AuthService.Services
                 .Set(r => r.Description, request.Description);
 
             var result = await _mongoDb.Roles.UpdateOneAsync(r => r.Id == roleId, update);
-            return result.ModifiedCount > 0;
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> PatchRoleAsync(string roleId, object request)
         {
             var role = await _mongoDb.Roles.Find(r => r.Id == roleId).FirstOrDefaultAsync();
-            if (role == null) return false;
+            if (role == null || request == null) return false;
 
             try
             {
                 var json = JsonSerializer.Serialize(request);
-                var patchDict = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                
-                if (patchDict == null || !patchDict.Any()) return false;
+                var patchDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
 
-                var updateBuilder = Builders<Role>.Update;
+                if (patchDict == null || patchDict.Count == 0) return false;
+
                 var updates = new List<UpdateDefinition<Role>>();
 
                 foreach (var kvp in patchDict)
                 {
-                    // Prevent modification of ID or Permissions via this endpoint
-                    if (kvp.Key.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
-                        kvp.Key.Equals("PermissionIds", StringComparison.OrdinalIgnoreCase)) 
-                        continue;
-
-                    updates.Add(updateBuilder.Set(kvp.Key, kvp.Value));
+                    if (kvp.Key.Equals("name", StringComparison.OrdinalIgnoreCase) && kvp.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var newName = kvp.Value.GetString();
+                        if (string.IsNullOrWhiteSpace(newName)) continue;
+                        var duplicate = await _mongoDb.Roles.Find(r => r.Name.ToLower() == newName.ToLower() && r.Id != roleId).AnyAsync();
+                        if (duplicate) return false;
+                        updates.Add(Builders<Role>.Update.Set(r => r.Name, newName));
+                    }
+                    else if (kvp.Key.Equals("description", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var desc = kvp.Value.ValueKind == JsonValueKind.Null ? null : kvp.Value.GetString();
+                        updates.Add(Builders<Role>.Update.Set(r => r.Description, desc));
+                    }
                 }
 
-                if (updates.Any())
-                {
-                    var combinedUpdate = updateBuilder.Combine(updates);
-                    var result = await _mongoDb.Roles.UpdateOneAsync(r => r.Id == roleId, combinedUpdate);
-                    return result.ModifiedCount > 0;
-                }
-                
-                return false;
+                if (updates.Count == 0) return false;
+
+                var result = await _mongoDb.Roles.UpdateOneAsync(r => r.Id == roleId, Builders<Role>.Update.Combine(updates));
+                return result.MatchedCount > 0;
             }
             catch
             {
@@ -122,19 +124,21 @@ namespace AuthService.Services
             var roleExists = await _mongoDb.Roles.Find(r => r.Id == roleId).AnyAsync();
             if (!roleExists) return false;
 
-            // AddToSet ensures we don't add duplicate role IDs to the array
             var update = Builders<User>.Update.AddToSet(u => u.AssignedRoleIds, roleId);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
-            
-            return result.ModifiedCount > 0;
+            var result = await _mongoDb.Users.UpdateOneAsync(
+                u => (u.UserId == userId || u.Id == userId) && !u.IsDeleted,
+                update);
+
+            return result.MatchedCount > 0;
         }
 
         public async Task<bool> RemoveRoleFromUserAsync(string roleId, string userId)
         {
-            // Pull removes the specific roleId from the array
             var update = Builders<User>.Update.Pull(u => u.AssignedRoleIds, roleId);
-            var result = await _mongoDb.Users.UpdateOneAsync(u => u.Id == userId && !u.IsDeleted, update);
-            
+            var result = await _mongoDb.Users.UpdateOneAsync(
+                u => (u.UserId == userId || u.Id == userId) && !u.IsDeleted,
+                update);
+
             return result.ModifiedCount > 0;
         }
 

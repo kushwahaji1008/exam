@@ -1,13 +1,12 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Versioning;
-using Microsoft.AspNetCore.Authorization;
 using ExamService.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ExamService.Controllers.V1
 {
     [ApiVersion("1.0")]
     [ApiController]
-    [Route("api/v{version:apiVersion}/exams/{examId}")] // Mapped directly to the examId route as requested
+    [Route("api/v{version:apiVersion}/exams/{examId}")]
     [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
     public class ExamAnalyticsController : ControllerBase
     {
@@ -19,15 +18,31 @@ namespace ExamService.Controllers.V1
         }
 
         [HttpGet("statistics")]
-        public async Task<IActionResult> GetStatistics(string examId) => Ok(new { totalAttempts = 150, averageScore = 75.5 });
+        public async Task<IActionResult> GetStatistics(string examId)
+        {
+            var stats = await _examService.GetExamStatisticsAsync(examId);
+            return stats != null ? Ok(stats) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("performance")]
-        public async Task<IActionResult> GetPerformance(string examId) => Ok(new { performanceMetrics = new { } });
+        public async Task<IActionResult> GetPerformance(string examId)
+        {
+            var metrics = await _examService.GetPerformanceMetricsAsync(examId);
+            return metrics != null ? Ok(metrics) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("completion")]
-        public async Task<IActionResult> GetCompletionStats(string examId) => Ok(new { completionRate = 92.5, averageTime = "45m" });
+        public async Task<IActionResult> GetCompletionStats(string examId)
+        {
+            var stats = await _examService.GetCompletionStatsAsync(examId);
+            return stats != null ? Ok(stats) : NotFound(new { message = "Exam not found" });
+        }
 
         [HttpGet("question-analysis")]
-        public async Task<IActionResult> GetQuestionAnalysis(string examId) => Ok(new { toughestQuestions = new[] { "Q4", "Q12" } });
+        public async Task<IActionResult> GetQuestionAnalysis(string examId)
+        {
+            var analysis = await _examService.GetQuestionAnalysisAsync(examId);
+            return analysis != null ? Ok(analysis) : NotFound(new { message = "Exam not found" });
+        }
     }
 }

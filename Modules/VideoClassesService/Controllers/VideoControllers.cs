@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using VideoClassesService.Models;
 using VideoClassesService.Services;
 
@@ -25,11 +26,11 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateCourse([FromBody] Course course)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var userName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Unknown";
+            var userName = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
 
             course.InstructorId = userId;
             course.InstructorName = userName;
@@ -49,11 +50,7 @@ namespace VideoClassesService.Controllers
         public async Task<IActionResult> GetCourse(string courseId)
         {
             var course = await _courseService.GetCourseByIdAsync(courseId);
-            if (course == null)
-            {
-                return NotFound(new { message = "Course not found" });
-            }
-
+            if (course == null) return NotFound(new { message = "Course not found" });
             return Ok(course);
         }
 
@@ -62,47 +59,34 @@ namespace VideoClassesService.Controllers
         public async Task<IActionResult> UpdateCourse(string courseId, [FromBody] Course course)
         {
             var success = await _courseService.UpdateCourseAsync(courseId, course);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to update course" });
-            }
-
+            if (!success) return NotFound(new { message = "Course not found" });
             return Ok(new { message = "Course updated" });
         }
 
         [HttpDelete("{courseId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteCourse(string courseId)
         {
             var success = await _courseService.DeleteCourseAsync(courseId);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to delete course" });
-            }
-
+            if (!success) return NotFound(new { message = "Course not found" });
             return Ok(new { message = "Course deleted" });
         }
 
         [HttpPost("{courseId}/publish")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PublishCourse(string courseId)
         {
             var success = await _courseService.PublishCourseAsync(courseId);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to publish course" });
-            }
-
+            if (!success) return NotFound(new { message = "Course not found" });
             return Ok(new { message = "Course published" });
         }
 
         [HttpPost("{courseId}/enroll")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> EnrollCourse(string courseId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
             var progress = await _progressService.EnrollStudentAsync(userId, courseId);
-
             return Ok(new { message = "Enrolled successfully", progress });
         }
 
@@ -114,12 +98,35 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost("{courseId}/chapters")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateChapter(string courseId, [FromBody] Chapter chapter)
         {
             chapter.CourseId = courseId;
             var created = await _courseService.CreateChapterAsync(chapter);
             return Ok(new { message = "Chapter created", chapter = created });
+        }
+
+        [HttpPut("chapters/{chapterId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateChapter(string chapterId, [FromBody] Chapter chapter)
+        {
+            var success = await _courseService.UpdateChapterAsync(chapterId, chapter);
+            return success ? Ok(new { message = "Chapter updated" }) : NotFound(new { message = "Chapter not found" });
+        }
+
+        [HttpDelete("chapters/{chapterId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> DeleteChapter(string chapterId)
+        {
+            var success = await _courseService.DeleteChapterAsync(chapterId);
+            return success ? Ok(new { message = "Chapter deleted" }) : NotFound(new { message = "Chapter not found" });
+        }
+
+        [HttpGet("chapters/{chapterId}/lessons")]
+        public async Task<IActionResult> GetLessonsByChapter(string chapterId)
+        {
+            var lessons = await _courseService.GetLessonsByChapterAsync(chapterId);
+            return Ok(lessons);
         }
 
         [HttpGet("search")]
@@ -156,7 +163,7 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateLesson([FromBody] Lesson lesson)
         {
             var created = await _courseService.CreateLessonAsync(lesson);
@@ -167,89 +174,71 @@ namespace VideoClassesService.Controllers
         public async Task<IActionResult> GetLesson(string lessonId)
         {
             var lesson = await _courseService.GetLessonByIdAsync(lessonId);
-            if (lesson == null)
-            {
-                return NotFound(new { message = "Lesson not found" });
-            }
+            if (lesson == null) return NotFound(new { message = "Lesson not found" });
 
-            // Increment view count
             await _courseService.IncrementViewCountAsync(lessonId);
-
             return Ok(lesson);
         }
 
+        [HttpPut("{lessonId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateLesson(string lessonId, [FromBody] Lesson lesson)
+        {
+            var success = await _courseService.UpdateLessonAsync(lessonId, lesson);
+            return success ? Ok(new { message = "Lesson updated" }) : NotFound(new { message = "Lesson not found" });
+        }
+
+        [HttpDelete("{lessonId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> DeleteLesson(string lessonId)
+        {
+            var success = await _courseService.DeleteLessonAsync(lessonId);
+            return success ? Ok(new { message = "Lesson deleted" }) : NotFound(new { message = "Lesson not found" });
+        }
+
         [HttpPost("{lessonId}/progress")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> UpdateProgress(string lessonId, [FromBody] ProgressUpdate update)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            
             var success = await _progressService.UpdateLessonProgressAsync(
-                userId,
-                update.CourseId,
-                lessonId,
-                update.WatchedSeconds,
-                update.TotalSeconds
-            );
+                userId, update.CourseId, lessonId, update.WatchedSeconds, update.TotalSeconds);
 
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to update progress" });
-            }
-
+            if (!success) return BadRequest(new { message = "Failed to update progress" });
             return Ok(new { message = "Progress updated" });
         }
 
         [HttpPost("{lessonId}/notes")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> AddNote(string lessonId, [FromBody] AddNoteRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            
-            var note = new Note
-            {
-                Timestamp = request.Timestamp,
-                Content = request.Content,
-                CreatedAt = DateTime.UtcNow
-            };
-
+            var note = new Note { Timestamp = request.Timestamp, Content = request.Content, CreatedAt = DateTime.UtcNow };
             var success = await _progressService.AddNoteAsync(userId, request.CourseId, lessonId, note);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to add note" });
-            }
-
+            if (!success) return BadRequest(new { message = "Failed to add note. Ensure enrolled in course." });
             return Ok(new { message = "Note added", note });
         }
 
         [HttpPost("{lessonId}/bookmarks")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> AddBookmark(string lessonId, [FromBody] AddBookmarkRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            
             var success = await _progressService.AddBookmarkAsync(userId, request.CourseId, lessonId, request.Timestamp);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to add bookmark" });
-            }
-
+            if (!success) return BadRequest(new { message = "Failed to add bookmark. Ensure enrolled in course." });
             return Ok(new { message = "Bookmark added" });
         }
 
         [HttpGet("{lessonId}/comments")]
-        public async Task<IActionResult> GetComments(string lessonId)
-        {
-            var comments = await _commentService.GetLessonCommentsAsync(lessonId);
-            return Ok(comments);
-        }
+        public async Task<IActionResult> GetComments(string lessonId) =>
+            Ok(await _commentService.GetLessonCommentsAsync(lessonId));
 
         [HttpPost("{lessonId}/comments")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> AddComment(string lessonId, [FromBody] AddCommentRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var userName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Unknown";
+            var userName = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
 
             var comment = new VideoComment
             {
@@ -263,6 +252,34 @@ namespace VideoClassesService.Controllers
 
             var created = await _commentService.AddCommentAsync(comment);
             return Ok(new { message = "Comment added", comment = created });
+        }
+
+        [HttpGet("comments/{commentId}/replies")]
+        public async Task<IActionResult> GetCommentReplies(string commentId) =>
+            Ok(await _commentService.GetCommentRepliesAsync(commentId));
+
+        [HttpPost("comments/{commentId}/like")]
+        [Authorize]
+        public async Task<IActionResult> LikeComment(string commentId)
+        {
+            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
+            var success = await _commentService.LikeCommentAsync(commentId, userId);
+            return success ? Ok(new { message = "Comment reaction updated" }) : NotFound(new { message = "Comment not found" });
+        }
+
+        [HttpDelete("comments/{commentId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteComment(string commentId)
+        {
+            var userId = User.FindFirst("userId")?.Value;
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var existing = await _commentService.GetCommentByIdAsync(commentId);
+            if (existing == null) return NotFound(new { message = "Comment not found" });
+            if (existing.StudentId != userId && role is not ("Teacher" or "Admin" or "SuperAdmin"))
+                return Forbid();
+
+            var deleted = await _commentService.DeleteCommentAsync(commentId);
+            return deleted ? Ok(new { message = "Comment deleted" }) : NotFound();
         }
     }
 
@@ -279,46 +296,34 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpGet("my-courses")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> GetMyCourses()
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var progress = await _progressService.GetStudentCoursesAsync(userId);
-            return Ok(progress);
+            return Ok(await _progressService.GetStudentCoursesAsync(userId));
         }
 
         [HttpGet("course/{courseId}")]
-        [Authorize(Roles = "Student")]
+        [Authorize]
         public async Task<IActionResult> GetCourseProgress(string courseId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
             var progress = await _progressService.GetStudentProgressAsync(userId, courseId);
-            
-            if (progress == null)
-            {
-                return NotFound(new { message = "No progress found" });
-            }
-
+            if (progress == null) return NotFound(new { message = "No progress found" });
             return Ok(progress);
         }
 
         [HttpPost("course/{courseId}/rate")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> RateCourse(string courseId, [FromBody] RateCourseRequest request)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            
             var success = await _progressService.RateCourseAsync(userId, courseId, request.Rating, request.Review);
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to rate course" });
-            }
-
+            if (!success) return BadRequest(new { message = "Failed to rate course (rating must be 1-5 and user enrolled)" });
             return Ok(new { message = "Course rated" });
         }
     }
 
-    // Request DTOs
     public class ProgressUpdate
     {
         public string CourseId { get; set; } = string.Empty;

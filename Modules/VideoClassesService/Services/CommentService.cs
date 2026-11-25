@@ -37,29 +37,34 @@ namespace VideoClassesService.Services
 
         public async Task<bool> LikeCommentAsync(string commentId, string studentId)
         {
-            var comment = await _mongoDb.Comments.Find(c => c.Id == commentId).FirstOrDefaultAsync();
-            if (comment == null) return false;
+            // FIX: Use atomic MongoDB operators to avoid race conditions and prevent likes going negative.
+            // Try to add like (only if not already liked)
+            var addResult = await _mongoDb.Comments.UpdateOneAsync(
+                c => c.Id == commentId && !c.LikedBy.Contains(studentId),
+                Builders<VideoComment>.Update
+                    .AddToSet(c => c.LikedBy, studentId)
+                    .Inc(c => c.Likes, 1));
 
-            if (comment.LikedBy.Contains(studentId))
-            {
-                // Unlike
-                comment.LikedBy.Remove(studentId);
-                comment.Likes--;
-            }
-            else
-            {
-                // Like
-                comment.LikedBy.Add(studentId);
-                comment.Likes++;
-            }
+            if (addResult.ModifiedCount > 0)
+                return true; // Like added successfully
 
-            var update = Builders<VideoComment>.Update
-                .Set(c => c.Likes, comment.Likes)
-                .Set(c => c.LikedBy, comment.LikedBy);
+            // User already liked — remove like (unlike)
+            var removeResult = await _mongoDb.Comments.UpdateOneAsync(
+                c => c.Id == commentId && c.LikedBy.Contains(studentId),
+                Builders<VideoComment>.Update
+                    .Pull(c => c.LikedBy, studentId)
+                    .Inc(c => c.Likes, -1));
 
-            var result = await _mongoDb.Comments.UpdateOneAsync(c => c.Id == commentId, update);
-            return result.ModifiedCount > 0;
+            // Safety net: ensure Likes never drops below 0 (defensive guard)
+            await _mongoDb.Comments.UpdateOneAsync(
+                c => c.Id == commentId && c.Likes < 0,
+                Builders<VideoComment>.Update.Set(c => c.Likes, 0));
+
+            return removeResult.ModifiedCount > 0 || removeResult.MatchedCount > 0;
         }
+
+        public async Task<VideoComment?> GetCommentByIdAsync(string commentId) =>
+            await _mongoDb.Comments.Find(c => c.Id == commentId).FirstOrDefaultAsync();
 
         public async Task<bool> DeleteCommentAsync(string commentId)
         {

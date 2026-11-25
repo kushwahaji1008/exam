@@ -7,24 +7,38 @@ namespace CourseService.Services
     {
         private readonly IMongoDatabase _database;
 
-        public MongoDbService(IConfiguration configuration)
+        public MongoDbService(IConfiguration configuration, IMongoClient? mongoClient = null)
         {
-            // Fetch connection details from appsettings.json, with fallbacks
             var connectionString = configuration["MongoDb:ConnectionString"] ?? "mongodb://localhost:27017";
-            var databaseName = configuration["MongoDb:CourseDatabase"] ?? "course_db"; // Dedicated DB for Courses
+            var databaseName = configuration["MongoDb:CourseDatabase"] ?? "course_db";
 
-            var client = new MongoClient(connectionString);
+            var client = mongoClient ?? new MongoClient(connectionString);
             _database = client.GetDatabase(databaseName);
+
+            EnsureIndexesAsync().GetAwaiter().GetResult();
         }
 
-        // ==========================================
-        // COLLECTIONS
-        // ==========================================
-        
+        private static async Task TryCreateIndexAsync<T>(IMongoCollection<T> collection, CreateIndexModel<T> model)
+        {
+            try { await collection.Indexes.CreateOneAsync(model); }
+            catch (MongoCommandException ex) when (ex.Code is 85 or 86 or 11000) { }
+        }
+
+        private async Task EnsureIndexesAsync()
+        {
+            await TryCreateIndexAsync(Courses, new CreateIndexModel<Course>(
+                Builders<Course>.IndexKeys.Ascending(c => c.CourseId),
+                new CreateIndexOptions { Unique = true, Name = "idx_courses_courseId" }));
+
+            await TryCreateIndexAsync(Courses, new CreateIndexModel<Course>(
+                Builders<Course>.IndexKeys.Ascending(c => c.Status).Descending(c => c.EnrollmentCount),
+                new CreateIndexOptions { Name = "idx_courses_status_popular" }));
+
+            await TryCreateIndexAsync(Courses, new CreateIndexModel<Course>(
+                Builders<Course>.IndexKeys.Ascending(c => c.CreatedBy),
+                new CreateIndexOptions { Name = "idx_courses_createdBy" }));
+        }
+
         public IMongoCollection<Course> Courses => _database.GetCollection<Course>("courses");
-        
-        // As you expand your Course Service, you might add more collections here in the future:
-        // public IMongoCollection<CourseEnrollment> Enrollments => _database.GetCollection<CourseEnrollment>("enrollments");
-        // public IMongoCollection<CourseReview> Reviews => _database.GetCollection<CourseReview>("reviews");
     }
 }

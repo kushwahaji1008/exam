@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using ResultService.Models;
 using ResultService.Services;
 
@@ -17,37 +18,64 @@ namespace ResultService.Controllers
             _evalService = evalService;
         }
 
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private bool IsStaff() => User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin" or "System";
+
         [HttpGet]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,SuperAdmin,Teacher")]
         public async Task<IActionResult> GetAll() => Ok(await _evalService.GetAllCertificatesAsync());
 
         [HttpGet("{certificateId}")]
         [Authorize]
-        public async Task<IActionResult> GetById(string certificateId) => Ok(await _evalService.GetCertificateByIdAsync(certificateId));
+        public async Task<IActionResult> GetById(string certificateId)
+        {
+            var cert = await _evalService.GetCertificateByIdAsync(certificateId);
+            if (cert == null) return NotFound(new { message = "Certificate not found" });
+            if (!IsStaff() && cert.UserId != GetUserId()) return Forbid();
+
+            return Ok(cert);
+        }
 
         [HttpPost("generate")]
-        [Authorize(Roles = "Admin,System")]
+        [Authorize]
         public async Task<IActionResult> Generate([FromBody] GenerateCertificateRequest req)
         {
+            var result = await _evalService.GetResultByIdAsync(req.ResultId);
+            if (result == null) return NotFound(new { message = "Result not found." });
+
+            if (!IsStaff())
+            {
+                if (result.UserId != GetUserId()) return Forbid();
+                if (result.Status is not (ResultStatus.Published or ResultStatus.Finalized or ResultStatus.Calculated))
+                    return BadRequest(new { message = "Result is not ready for certificate generation." });
+            }
+
             try
             {
                 var cert = await _evalService.GenerateCertificateAsync(req.ResultId);
                 return Ok(cert);
             }
-            catch (Exception ex) { return BadRequest(new { message = ex.Message }); }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("{certificateId}/download")]
         [Authorize]
-        public IActionResult Download(string certificateId)
+        public async Task<IActionResult> Download(string certificateId)
         {
-            // Simulating a file download
-            byte[] fileBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // Mock PDF bytes
-            return File(fileBytes, "application/pdf", $"Certificate_{certificateId}.pdf");
+            var cert = await _evalService.GetCertificateByIdAsync(certificateId);
+            if (cert == null) return NotFound(new { message = "Certificate not found." });
+            if (!IsStaff() && cert.UserId != GetUserId()) return Forbid();
+
+            var result = await _evalService.GetResultByIdAsync(cert.ResultId);
+            var pdfBytes = _evalService.GenerateCertificatePdf(cert, result);
+            return File(pdfBytes, "application/pdf", $"Certificate_{cert.Id}.pdf");
         }
 
         [HttpGet("{certificateCode}/verify")]
-        [AllowAnonymous] // Verification is public!
+        [AllowAnonymous]
         public async Task<IActionResult> Verify(string certificateCode)
         {
             var cert = await _evalService.VerifyCertificateAsync(certificateCode);

@@ -1,8 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using QuestionBankService.Models;
 using QuestionBankService.Services;
-using System.Security.Claims;
 
 namespace QuestionBankService.Controllers.V1
 {
@@ -20,83 +21,84 @@ namespace QuestionBankService.Controllers.V1
             _logger = logger;
         }
 
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private string? GetUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+        private bool IsAdmin() => GetUserRole() is "Admin" or "SuperAdmin";
+
         #region 1. Questions (CRUD)
 
         [HttpGet]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetAllQuestions([FromQuery] string? categoryId, [FromQuery] string? difficultyId)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetAllQuestions(
+            [FromQuery] string? categoryId,
+            [FromQuery] string? difficultyId,
+            [FromQuery] string? subjectId = null,
+            [FromQuery] string? topicId = null,
+            [FromQuery] QuestionStatus? status = null,
+            [FromQuery] QuestionType? type = null,
+            [FromQuery] string? search = null,
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null)
         {
-            // Now safely passing string IDs to the service
-            var questions = await _questionService.GetAllQuestionsAsync(categoryId, difficultyId);
-            var questionDtos = questions.Select(QuestionService.ToQuestionDto).ToList();
-            return Ok(questionDtos);
+            var questions = await _questionService.GetAllQuestionsAsync(
+                categoryId, difficultyId, subjectId, topicId, status, type, search,
+                includeArchived: status == QuestionStatus.Archived, page: page, pageSize: pageSize);
+            return Ok(questions.Select(QuestionService.ToQuestionDto).ToList());
         }
 
         [HttpPost]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateQuestion([FromBody] CreateQuestionRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-
-            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var question = await _questionService.CreateQuestionAsync(request, userId);
-
+            var question = await _questionService.CreateQuestionAsync(request, GetUserId() ?? string.Empty);
             return Ok(new { message = "Question created successfully", question = QuestionService.ToQuestionDto(question) });
         }
 
         [HttpGet("{questionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionById(string questionId)
         {
             var question = await _questionService.GetQuestionByIdAsync(questionId);
             if (question == null) return NotFound(new { message = "Question not found" });
-
             return Ok(QuestionService.ToQuestionWithAnswer(question));
         }
 
         [HttpPut("{questionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UpdateQuestion(string questionId, [FromBody] Question updatedQuestion)
         {
-            var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-
             var question = await _questionService.GetQuestionByIdAsync(questionId);
             if (question == null) return NotFound(new { message = "Question not found" });
+            if (question.CreatedBy != GetUserId() && !IsAdmin()) return Forbid();
 
-            if (question.CreatedBy != userId && role != "Admin" && role != "SuperAdmin") return Forbid();
-
-            updatedQuestion.Id = questionId;
-            var success = await _questionService.UpdateQuestionAsync(questionId, updatedQuestion);
-
+            var success = await _questionService.UpdateQuestionAsync(questionId, updatedQuestion, GetUserId());
             if (!success) return BadRequest(new { message = "Failed to update question" });
-
             return Ok(new { message = "Question updated successfully" });
         }
 
         [HttpPatch("{questionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PatchQuestion(string questionId, [FromBody] object patchData)
         {
-            // TODO: Implement partial update logic
-            return Ok(new { message = "Question partially updated" });
+            var question = await _questionService.GetQuestionByIdAsync(questionId);
+            if (question == null) return NotFound(new { message = "Question not found" });
+            if (question.CreatedBy != GetUserId() && !IsAdmin()) return Forbid();
+
+            var success = await _questionService.PatchQuestionAsync(questionId, patchData, GetUserId());
+            return success ? Ok(new { message = "Question partially updated" }) : BadRequest(new { message = "Invalid patch payload" });
         }
 
         [HttpDelete("{questionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteQuestion(string questionId)
         {
-            var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-
             var question = await _questionService.GetQuestionByIdAsync(questionId);
             if (question == null) return NotFound(new { message = "Question not found" });
-
-            if (question.CreatedBy != userId && role != "Admin" && role != "SuperAdmin") return Forbid();
+            if (question.CreatedBy != GetUserId() && !IsAdmin()) return Forbid();
 
             var success = await _questionService.DeleteQuestionAsync(questionId);
             if (!success) return BadRequest(new { message = "Failed to delete question" });
-
             return Ok(new { message = "Question deleted successfully" });
         }
 
@@ -104,62 +106,44 @@ namespace QuestionBankService.Controllers.V1
 
         #region 2. Question Lifecycle
 
-        // [HttpPost("{questionId}/publish")]
-        // [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        // public async Task<IActionResult> PublishQuestion(string questionId)
-        // {
-        //     // TODO: Change status to Published
-        //     return Ok(new { message = "Question published" });
-        // }
-
-        // [HttpPost("{questionId}/unpublish")]
-        // [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        // public async Task<IActionResult> UnpublishQuestion(string questionId)
-        // {
-        //     // TODO: Change status to Draft/Unpublished
-        //     return Ok(new { message = "Question unpublished" });
-        // }
-
         [HttpPost("{questionId}/publish")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> PublishQuestion(string questionId)
         {
-            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Published);
-            if (!success) return NotFound(new { message = "Question not found or update failed." });
-            return Ok(new { message = "Question published successfully" });
+            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Published, GetUserId());
+            return success ? Ok(new { message = "Question published successfully" }) : NotFound(new { message = "Question not found." });
         }
 
         [HttpPost("{questionId}/unpublish")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UnpublishQuestion(string questionId)
         {
-            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Draft);
-            if (!success) return NotFound(new { message = "Question not found or update failed." });
-            return Ok(new { message = "Question unpublished and reverted to Draft" });
+            var success = await _questionService.UpdateQuestionStatusAsync(questionId, QuestionStatus.Draft, GetUserId());
+            return success ? Ok(new { message = "Question unpublished and reverted to Draft" }) : NotFound(new { message = "Question not found." });
         }
 
         [HttpPost("{questionId}/archive")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ArchiveQuestion(string questionId)
         {
-            // TODO: Move to archive state
-            return Ok(new { message = "Question archived" });
+            var success = await _questionService.ArchiveQuestionAsync(questionId, GetUserId());
+            return success ? Ok(new { message = "Question archived" }) : NotFound(new { message = "Question not found." });
         }
 
         [HttpPost("{questionId}/restore")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> RestoreQuestion(string questionId)
         {
-            // TODO: Restore from archive
-            return Ok(new { message = "Question restored" });
+            var success = await _questionService.RestoreQuestionAsync(questionId, GetUserId());
+            return success ? Ok(new { message = "Question restored" }) : NotFound(new { message = "Question not found." });
         }
 
         [HttpPost("{questionId}/duplicate")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DuplicateQuestion(string questionId)
         {
-            // TODO: Clone question and return new ID
-            return Ok(new { message = "Question duplicated", newQuestionId = "new-id" });
+            var copy = await _questionService.DuplicateQuestionAsync(questionId, GetUserId() ?? "SYSTEM");
+            return copy != null ? Ok(new { message = "Question duplicated", newQuestionId = copy.Id, question = QuestionService.ToQuestionDto(copy) }) : NotFound(new { message = "Question not found." });
         }
 
         #endregion
@@ -167,35 +151,38 @@ namespace QuestionBankService.Controllers.V1
         #region 3. Question Versions
 
         [HttpGet("{questionId}/versions")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionVersions(string questionId)
         {
-            // TODO: Fetch version history
-            return Ok(new { message = "Versions fetched" });
+            var versions = await _questionService.GetQuestionVersionsAsync(questionId);
+            return Ok(versions);
         }
 
         [HttpGet("{questionId}/versions/{versionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionVersion(string questionId, string versionId)
         {
-            // TODO: Fetch specific version detail
-            return Ok(new { message = $"Fetched version {versionId}" });
+            var version = await _questionService.GetQuestionVersionByIdAsync(versionId);
+            if (version == null || version.OriginalQuestionId != questionId)
+                return NotFound(new { message = "Version not found" });
+            return Ok(version);
         }
 
         [HttpPost("{questionId}/versions")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateQuestionVersion(string questionId, [FromBody] object versionData)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> CreateQuestionVersion(string questionId, [FromBody] object? versionData = null)
         {
-            // TODO: explicitly save a new version snapshot
-            return Ok(new { message = "New version created" });
+            var snapshot = await _questionService.CreateQuestionVersionAsync(questionId, GetUserId() ?? "SYSTEM");
+            if (snapshot == null) return NotFound(new { message = "Question not found" });
+            return Ok(new { message = "New version created", version = snapshot });
         }
 
         [HttpPost("{questionId}/versions/{versionId}/restore")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> RestoreQuestionVersion(string questionId, string versionId)
         {
-            // TODO: Roll back current question to specific version
-            return Ok(new { message = $"Rolled back to version {versionId}" });
+            var success = await _questionService.RestoreQuestionVersionAsync(questionId, versionId, GetUserId() ?? "SYSTEM");
+            return success ? Ok(new { message = $"Rolled back to version {versionId}" }) : NotFound(new { message = "Question or version not found" });
         }
 
         #endregion
@@ -203,35 +190,38 @@ namespace QuestionBankService.Controllers.V1
         #region 4. Question Options (For MCQs)
 
         [HttpGet("{questionId}/options")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetQuestionOptions(string questionId)
         {
-            // TODO: Fetch only the options for a question
-            return Ok(new { message = "Options fetched" });
+            var question = await _questionService.GetQuestionByIdAsync(questionId);
+            if (question == null) return NotFound(new { message = "Question not found" });
+            return Ok(new { options = question.Options, correctOptions = question.CorrectOptions });
         }
 
         [HttpPost("{questionId}/options")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> AddQuestionOption(string questionId, [FromBody] OptionRequest request)
         {
-            // TODO: Add a new option to a question
-            return Ok(new { message = "Option added" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var added = await _questionService.AddQuestionOptionAsync(questionId, request);
+            return added != null ? Ok(new { message = "Option added", option = added }) : NotFound(new { message = "Question not found" });
         }
 
         [HttpPut("{questionId}/options/{optionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UpdateQuestionOption(string questionId, string optionId, [FromBody] OptionRequest request)
         {
-            // TODO: Update a specific option
-            return Ok(new { message = "Option updated" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var success = await _questionService.UpdateQuestionOptionAsync(questionId, optionId, request);
+            return success ? Ok(new { message = "Option updated" }) : NotFound(new { message = "Question or option not found" });
         }
 
         [HttpDelete("{questionId}/options/{optionId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteQuestionOption(string questionId, string optionId)
         {
-            // TODO: Remove a specific option
-            return Ok(new { message = "Option deleted" });
+            var success = await _questionService.DeleteQuestionOptionAsync(questionId, optionId);
+            return success ? Ok(new { message = "Option deleted" }) : NotFound(new { message = "Question or option not found" });
         }
 
         #endregion
@@ -239,15 +229,11 @@ namespace QuestionBankService.Controllers.V1
         #region 5. Categories
 
         [HttpGet("~/api/v{version:apiVersion}/question-categories")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetCategories()
-        {
-            var categories = await _questionService.GetCategoriesAsync();
-            return Ok(categories);
-        }
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetCategories() => Ok(await _questionService.GetCategoriesAsync());
 
         [HttpPost("~/api/v{version:apiVersion}/question-categories")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateCategory([FromBody] Category request)
         {
             var category = await _questionService.CreateCategoryAsync(request);
@@ -255,27 +241,27 @@ namespace QuestionBankService.Controllers.V1
         }
 
         [HttpGet("~/api/v{version:apiVersion}/question-categories/{categoryId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetCategory(string categoryId)
         {
-            // TODO: Get single category
-            return Ok(new { message = "Category fetched" });
+            var cat = await _questionService.GetCategoryByIdAsync(categoryId);
+            return cat != null ? Ok(cat) : NotFound(new { message = "Category not found" });
         }
 
         [HttpPut("~/api/v{version:apiVersion}/question-categories/{categoryId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateCategory(string categoryId, [FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateCategory(string categoryId, [FromBody] Category request)
         {
-            // TODO: Update category
-            return Ok(new { message = "Category updated" });
+            var success = await _questionService.UpdateCategoryAsync(categoryId, request);
+            return success ? Ok(new { message = "Category updated" }) : NotFound(new { message = "Category not found" });
         }
 
         [HttpDelete("~/api/v{version:apiVersion}/question-categories/{categoryId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteCategory(string categoryId)
         {
-            // TODO: Delete category
-            return Ok(new { message = "Category deleted" });
+            var success = await _questionService.DeleteCategoryAsync(categoryId);
+            return success ? Ok(new { message = "Category deleted" }) : NotFound(new { message = "Category not found" });
         }
 
         #endregion
@@ -283,43 +269,39 @@ namespace QuestionBankService.Controllers.V1
         #region 6. Subjects
 
         [HttpGet("~/api/v{version:apiVersion}/subjects")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetSubjects()
-        {
-            // TODO: Get all subjects
-            return Ok(new { message = "Subjects fetched" });
-        }
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetSubjects() => Ok(await _questionService.GetSubjectsAsync());
 
         [HttpPost("~/api/v{version:apiVersion}/subjects")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateSubject([FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> CreateSubject([FromBody] Subject request)
         {
-            // TODO: Create subject
-            return Ok(new { message = "Subject created" });
+            var subject = await _questionService.CreateSubjectAsync(request);
+            return Ok(new { message = "Subject created", subject });
         }
 
         [HttpGet("~/api/v{version:apiVersion}/subjects/{subjectId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetSubject(string subjectId)
         {
-            // TODO: Get subject by id
-            return Ok(new { message = "Subject fetched" });
+            var subject = await _questionService.GetSubjectByIdAsync(subjectId);
+            return subject != null ? Ok(subject) : NotFound(new { message = "Subject not found" });
         }
 
         [HttpPut("~/api/v{version:apiVersion}/subjects/{subjectId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateSubject(string subjectId, [FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateSubject(string subjectId, [FromBody] Subject request)
         {
-            // TODO: Update subject
-            return Ok(new { message = "Subject updated" });
+            var success = await _questionService.UpdateSubjectAsync(subjectId, request);
+            return success ? Ok(new { message = "Subject updated" }) : NotFound(new { message = "Subject not found" });
         }
 
         [HttpDelete("~/api/v{version:apiVersion}/subjects/{subjectId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteSubject(string subjectId)
         {
-            // TODO: Delete subject
-            return Ok(new { message = "Subject deleted" });
+            var success = await _questionService.DeleteSubjectAsync(subjectId);
+            return success ? Ok(new { message = "Subject deleted" }) : NotFound(new { message = "Subject not found" });
         }
 
         #endregion
@@ -327,43 +309,39 @@ namespace QuestionBankService.Controllers.V1
         #region 7. Topics
 
         [HttpGet("~/api/v{version:apiVersion}/topics")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetTopics()
-        {
-            // TODO: Get all topics
-            return Ok(new { message = "Topics fetched" });
-        }
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetTopics() => Ok(await _questionService.GetTopicsAsync());
 
         [HttpPost("~/api/v{version:apiVersion}/topics")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateTopic([FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> CreateTopic([FromBody] Topic request)
         {
-            // TODO: Create topic
-            return Ok(new { message = "Topic created" });
+            var topic = await _questionService.CreateTopicAsync(request);
+            return Ok(new { message = "Topic created", topic });
         }
 
         [HttpGet("~/api/v{version:apiVersion}/topics/{topicId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetTopic(string topicId)
         {
-            // TODO: Get topic
-            return Ok(new { message = "Topic fetched" });
+            var topic = await _questionService.GetTopicByIdAsync(topicId);
+            return topic != null ? Ok(topic) : NotFound(new { message = "Topic not found" });
         }
 
         [HttpPut("~/api/v{version:apiVersion}/topics/{topicId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateTopic(string topicId, [FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateTopic(string topicId, [FromBody] Topic request)
         {
-            // TODO: Update topic
-            return Ok(new { message = "Topic updated" });
+            var success = await _questionService.UpdateTopicAsync(topicId, request);
+            return success ? Ok(new { message = "Topic updated" }) : NotFound(new { message = "Topic not found" });
         }
 
         [HttpDelete("~/api/v{version:apiVersion}/topics/{topicId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteTopic(string topicId)
         {
-            // TODO: Delete topic
-            return Ok(new { message = "Topic deleted" });
+            var success = await _questionService.DeleteTopicAsync(topicId);
+            return success ? Ok(new { message = "Topic deleted" }) : NotFound(new { message = "Topic not found" });
         }
 
         #endregion
@@ -371,35 +349,31 @@ namespace QuestionBankService.Controllers.V1
         #region 8. Difficulty
 
         [HttpGet("~/api/v{version:apiVersion}/difficulties")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetDifficulties()
-        {
-            // TODO: List all difficulties
-            return Ok(new { message = "Difficulties fetched" });
-        }
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> GetDifficulties() => Ok(await _questionService.GetDifficultiesAsync());
 
         [HttpPost("~/api/v{version:apiVersion}/difficulties")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateDifficulty([FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> CreateDifficulty([FromBody] Difficulty request)
         {
-            // TODO: Create difficulty rating
-            return Ok(new { message = "Difficulty created" });
+            var difficulty = await _questionService.CreateDifficultyAsync(request);
+            return Ok(new { message = "Difficulty created", difficulty });
         }
 
         [HttpPut("~/api/v{version:apiVersion}/difficulties/{difficultyId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateDifficulty(string difficultyId, [FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateDifficulty(string difficultyId, [FromBody] Difficulty request)
         {
-            // TODO: Update difficulty
-            return Ok(new { message = "Difficulty updated" });
+            var success = await _questionService.UpdateDifficultyAsync(difficultyId, request);
+            return success ? Ok(new { message = "Difficulty updated" }) : NotFound(new { message = "Difficulty not found" });
         }
 
         [HttpDelete("~/api/v{version:apiVersion}/difficulties/{difficultyId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteDifficulty(string difficultyId)
         {
-            // TODO: Delete difficulty
-            return Ok(new { message = "Difficulty deleted" });
+            var success = await _questionService.DeleteDifficultyAsync(difficultyId);
+            return success ? Ok(new { message = "Difficulty deleted" }) : NotFound(new { message = "Difficulty not found" });
         }
 
         #endregion
@@ -408,34 +382,30 @@ namespace QuestionBankService.Controllers.V1
 
         [HttpGet("~/api/v{version:apiVersion}/tags")]
         [Authorize]
-        public async Task<IActionResult> GetTags()
-        {
-            var tags = await _questionService.GetTagsAsync();
-            return Ok(tags);
-        }
+        public async Task<IActionResult> GetTags() => Ok(await _questionService.GetTagsAsync());
 
         [HttpPost("~/api/v{version:apiVersion}/tags")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> CreateTag([FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> CreateTag([FromBody] QuestionBankService.Models.Tag request)
         {
-            // TODO: Create a tag
-            return Ok(new { message = "Tag created" });
+            var tag = await _questionService.CreateTagAsync(request);
+            return Ok(new { message = "Tag created", tag });
         }
 
         [HttpPut("~/api/v{version:apiVersion}/tags/{tagId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> UpdateTag(string tagId, [FromBody] object request)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateTag(string tagId, [FromBody] QuestionBankService.Models.Tag request)
         {
-            // TODO: Update a tag
-            return Ok(new { message = "Tag updated" });
+            var success = await _questionService.UpdateTagAsync(tagId, request);
+            return success ? Ok(new { message = "Tag updated" }) : NotFound(new { message = "Tag not found" });
         }
 
         [HttpDelete("~/api/v{version:apiVersion}/tags/{tagId}")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> DeleteTag(string tagId)
         {
-            // TODO: Delete a tag
-            return Ok(new { message = "Tag deleted" });
+            var success = await _questionService.DeleteTagAsync(tagId);
+            return success ? Ok(new { message = "Tag deleted" }) : NotFound(new { message = "Tag not found" });
         }
 
         #endregion
@@ -443,60 +413,62 @@ namespace QuestionBankService.Controllers.V1
         #region 10. Bulk Operations
 
         [HttpPost("~/api/v{version:apiVersion}/questions/bulk")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin,0,Student")] // Need student for exam taking
+        [Authorize]
         public async Task<IActionResult> GetQuestionsByIds([FromBody] List<string> questionIds)
         {
+            if (questionIds == null || questionIds.Count > 200)
+                return BadRequest(new { message = "Provide between 0 and 200 question IDs." });
+
             var questions = await _questionService.GetQuestionsByIdsAsync(questionIds);
+            var role = GetUserRole();
+            if (role is "Teacher" or "Admin" or "SuperAdmin")
+                return Ok(questions.Select(QuestionService.ToQuestionWithAnswer).ToList());
 
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            if (role == "Student" || role == "0")
-            {
-                var questionDtos = questions.Select(QuestionService.ToQuestionDto).ToList();
-                return Ok(questionDtos);
-            }
-
-            var questionsWithAnswers = questions.Select(QuestionService.ToQuestionWithAnswer).ToList();
-            return Ok(questionsWithAnswers);
+            return Ok(questions.Select(QuestionService.ToQuestionDto).ToList());
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/import")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> ImportQuestions([FromBody] object importData)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> ImportQuestions([FromBody] JsonElement importData)
         {
-            // TODO: Handle CSV/JSON import
-            return Ok(new { message = "Questions imported successfully" });
+            var (count, questions) = await _questionService.ImportQuestionsAsync(importData, GetUserId() ?? "SYSTEM");
+            if (count == 0)
+                return BadRequest(new { message = "No valid questions found in import payload." });
+
+            return Ok(new { message = $"{count} questions imported successfully", count, questions = questions.Select(QuestionService.ToQuestionDto) });
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/export")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> ExportQuestions([FromBody] object exportFilters)
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> ExportQuestions([FromBody] ExportQuestionsRequest? exportFilters = null)
         {
-            // TODO: Generate and return CSV/JSON file of questions
-            return Ok(new { message = "Export initiated" });
+            var req = exportFilters ?? new ExportQuestionsRequest();
+            var (bytes, contentType, fileName) = await _questionService.ExportQuestionsAsync(req);
+            return File(bytes, contentType, fileName);
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/bulk-publish")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> BulkPublish([FromBody] List<string> questionIds)
         {
-            // TODO: Publish multiple questions
-            return Ok(new { message = $"{questionIds.Count} questions published" });
+            var modified = await _questionService.BulkUpdateStatusAsync(questionIds, QuestionStatus.Published);
+            return Ok(new { message = $"{modified} questions published", count = modified });
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/bulk-archive")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> BulkArchive([FromBody] List<string> questionIds)
         {
-            // TODO: Archive multiple questions
-            return Ok(new { message = $"{questionIds.Count} questions archived" });
+            var modified = await _questionService.BulkUpdateStatusAsync(questionIds, QuestionStatus.Archived);
+            return Ok(new { message = $"{modified} questions archived", count = modified });
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/bulk-delete")]
-        [Authorize(Roles = "1,2,3,Admin,SuperAdmin")] // Generally restricted to higher roles
+        [Authorize(Roles = "Admin,SuperAdmin")]
         public async Task<IActionResult> BulkDelete([FromBody] List<string> questionIds)
         {
-            // TODO: Delete multiple questions
-            return Ok(new { message = $"{questionIds.Count} questions deleted" });
+            var deleted = await _questionService.BulkDeleteAsync(questionIds);
+            return Ok(new { message = $"{deleted} questions deleted", count = deleted });
         }
 
         #endregion
@@ -504,35 +476,37 @@ namespace QuestionBankService.Controllers.V1
         #region 11. Question Review Queue
 
         [HttpGet("~/api/v{version:apiVersion}/questions/review-queue")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetReviewQueue()
         {
-            // TODO: Fetch questions pending review
-            return Ok(new { message = "Review queue fetched" });
+            var queue = await _questionService.GetReviewQueueAsync();
+            return Ok(queue.Select(QuestionService.ToQuestionWithAnswer).ToList());
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/{questionId}/submit-review")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> SubmitForReview(string questionId)
         {
-            // TODO: Change status to 'Pending Review'
-            return Ok(new { message = "Question submitted for review" });
+            var success = await _questionService.AddReviewLogAsync(questionId, GetUserId() ?? "SYSTEM", QuestionStatus.PendingReview, "Submitted for review");
+            return success ? Ok(new { message = "Question submitted for review" }) : NotFound(new { message = "Question not found" });
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/{questionId}/approve")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> ApproveQuestion(string questionId, [FromBody] ReviewCommentRequest request)
         {
-            // TODO: Approve the question (making it ready for publishing)
-            return Ok(new { message = "Question approved" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var success = await _questionService.AddReviewLogAsync(questionId, GetUserId() ?? "SYSTEM", QuestionStatus.Approved, request.Comment);
+            return success ? Ok(new { message = "Question approved" }) : NotFound(new { message = "Question not found" });
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/{questionId}/reject")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> RejectQuestion(string questionId, [FromBody] ReviewCommentRequest request)
         {
-            // TODO: Reject and send back to drafter
-            return Ok(new { message = "Question rejected" });
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var success = await _questionService.AddReviewLogAsync(questionId, GetUserId() ?? "SYSTEM", QuestionStatus.Rejected, request.Comment);
+            return success ? Ok(new { message = "Question rejected" }) : NotFound(new { message = "Question not found" });
         }
 
         #endregion
@@ -547,18 +521,5 @@ namespace QuestionBankService.Controllers.V1
         }
 
         #endregion
-    }
-
-    // Dummy classes added to ensure the controller compiles successfully.
-    // Move these to your QuestionBankService.Models namespace/folder.
-    public class OptionRequest
-    {
-        public string Text { get; set; } = string.Empty;
-        public bool IsCorrect { get; set; }
-    }
-
-    public class ReviewCommentRequest
-    {
-        public string Comment { get; set; } = string.Empty;
     }
 }

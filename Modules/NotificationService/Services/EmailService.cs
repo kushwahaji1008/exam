@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Mail;
+
 namespace NotificationService.Services
 {
     public class EmailService
@@ -11,95 +14,59 @@ namespace NotificationService.Services
             _logger = logger;
         }
 
-        public async Task<bool> SendEmailAsync(string userId, string subject, string body)
+        public async Task<bool> SendEmailAsync(string toEmail, string subject, string body)
         {
+            if (string.IsNullOrWhiteSpace(toEmail) || !toEmail.Contains('@'))
+            {
+                _logger.LogWarning("Cannot send notification email: invalid recipient '{Recipient}'", toEmail);
+                return false;
+            }
+
             try
             {
-                // In production, integrate with:
-                // - SendGrid
-                // - AWS SES
-                // - SMTP server
-                // - Mailgun
-                // - Postmark
+                var provider = _configuration["Email:Provider"] ?? "Log";
+                if (!provider.Equals("Smtp", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("[NotificationEmail:Log] To={Email}, Subject={Subject}", toEmail, subject);
+                    return true;
+                }
 
-                // For MVP, we'll log the email
-                _logger.LogInformation("Email sent to user {UserId}: {Subject}", userId, subject);
+                var server = _configuration["SmtpSettings:Server"];
+                var senderEmail = _configuration["SmtpSettings:SenderEmail"];
+                var appPassword = _configuration["SmtpSettings:AppPassword"];
+                var senderName = _configuration["SmtpSettings:SenderName"] ?? "Exam Solution";
 
-                // Simulate email sending
-                await Task.Delay(100);
+                if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(senderEmail) || string.IsNullOrWhiteSpace(appPassword))
+                {
+                    _logger.LogWarning("SMTP settings incomplete for NotificationService; skipping send to {Email}", toEmail);
+                    return false;
+                }
 
+                int port = int.TryParse(_configuration["SmtpSettings:Port"], out var p) ? p : 587;
+                using var smtpClient = new SmtpClient(server, port)
+                {
+                    Credentials = new NetworkCredential(senderEmail, appPassword),
+                    EnableSsl = true,
+                    Timeout = 10000
+                };
+
+                using var mailMessage = new MailMessage
+                {
+                    From = new MailAddress(senderEmail, senderName),
+                    Subject = subject,
+                    Body = body,
+                    IsBodyHtml = true
+                };
+                mailMessage.To.Add(toEmail);
+
+                await smtpClient.SendMailAsync(mailMessage);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send email to user {UserId}", userId);
+                _logger.LogError(ex, "Failed to send notification email to {Email}", toEmail);
                 return false;
             }
         }
-
-        // Production-ready email integrations:
-
-        /*
-        // SendGrid Integration
-        public async Task<bool> SendEmailWithSendGridAsync(string toEmail, string subject, string body)
-        {
-            var apiKey = _configuration["SendGrid:ApiKey"];
-            var client = new SendGridClient(apiKey);
-            
-            var from = new EmailAddress(_configuration["SendGrid:FromEmail"], "Exam System");
-            var to = new EmailAddress(toEmail);
-            
-            var msg = MailHelper.CreateSingleEmail(from, to, subject, body, body);
-            var response = await client.SendEmailAsync(msg);
-            
-            return response.StatusCode == System.Net.HttpStatusCode.OK;
-        }
-
-        // AWS SES Integration
-        public async Task<bool> SendEmailWithSESAsync(string toEmail, string subject, string body)
-        {
-            var sesClient = new AmazonSimpleEmailServiceClient();
-            
-            var request = new SendEmailRequest
-            {
-                Source = _configuration["AWS:FromEmail"],
-                Destination = new Destination { ToAddresses = new List<string> { toEmail } },
-                Message = new Message
-                {
-                    Subject = new Content(subject),
-                    Body = new Body { Html = new Content { Data = body } }
-                }
-            };
-            
-            var response = await sesClient.SendEmailAsync(request);
-            return response.HttpStatusCode == System.Net.HttpStatusCode.OK;
-        }
-
-        // SMTP Integration
-        public async Task<bool> SendEmailWithSMTPAsync(string toEmail, string subject, string body)
-        {
-            var smtpClient = new SmtpClient(_configuration["SMTP:Host"])
-            {
-                Port = int.Parse(_configuration["SMTP:Port"]),
-                Credentials = new NetworkCredential(
-                    _configuration["SMTP:Username"],
-                    _configuration["SMTP:Password"]
-                ),
-                EnableSsl = true
-            };
-
-            var mailMessage = new MailMessage
-            {
-                From = new MailAddress(_configuration["SMTP:FromEmail"]),
-                Subject = subject,
-                Body = body,
-                IsBodyHtml = true
-            };
-            mailMessage.To.Add(toEmail);
-
-            await smtpClient.SendMailAsync(mailMessage);
-            return true;
-        }
-        */
     }
 }

@@ -16,18 +16,17 @@ namespace ExamService.Controllers.V1
             _seriesService = seriesService;
         }
 
-        // 1. Create a new Exam Series (Admin/Creator only)
         [HttpPost]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")] // Assuming only logged in admins/teachers can create
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateSeries([FromBody] CreateExamSeriesRequest request)
         {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
             var userId = User.FindFirst("userId")?.Value ?? "SYSTEM";
-            
+
             var series = await _seriesService.CreateSeriesAsync(request, userId);
             return Created($"/api/v1/exam-series/{series.SeriesId}", new { message = "Series created successfully", data = series });
         }
 
-        // 2. Get all published series (Public for students/marketing page)
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetAllSeries()
@@ -36,26 +35,47 @@ namespace ExamService.Controllers.V1
             return Ok(series);
         }
 
-        // 3. Get specific series details
         [HttpGet("{seriesId}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetSeries(string seriesId)
         {
             var series = await _seriesService.GetSeriesByIdAsync(seriesId);
             if (series == null) return NotFound(new { message = "Exam series not found." });
-            
             return Ok(series);
         }
 
-        // 4. Add an Exam to the Series
+        [HttpPut("{seriesId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> UpdateSeries(string seriesId, [FromBody] UpdateExamSeriesRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var updated = await _seriesService.UpdateSeriesAsync(seriesId, request);
+            return updated ? Ok(new { message = "Exam series updated." }) : NotFound(new { message = "Exam series not found." });
+        }
+
+        [HttpDelete("{seriesId}")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<IActionResult> DeleteSeries(string seriesId)
+        {
+            var deleted = await _seriesService.DeleteSeriesAsync(seriesId);
+            return deleted ? Ok(new { message = "Exam series deleted." }) : NotFound(new { message = "Exam series not found." });
+        }
+
         [HttpPost("{seriesId}/add-exam")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> AddExam(string seriesId, [FromBody] AddExamToSeriesRequest request)
         {
             var result = await _seriesService.AddExamToSeriesAsync(seriesId, request.ExamId);
-            
             if (!result.Success) return BadRequest(new { message = result.Message });
-            
+            return Ok(new { message = result.Message });
+        }
+
+        [HttpDelete("{seriesId}/exams/{examId}")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> RemoveExam(string seriesId, string examId)
+        {
+            var result = await _seriesService.RemoveExamFromSeriesAsync(seriesId, examId);
+            if (!result.Success) return NotFound(new { message = result.Message });
             return Ok(new { message = result.Message });
         }
     }

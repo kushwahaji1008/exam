@@ -6,6 +6,7 @@ namespace ExamAttemptService.Models
 {
     #region Entities (Database Models)
 
+    [BsonIgnoreExtraElements]
     public class ExamAttempt
     {
         [BsonId]
@@ -25,11 +26,11 @@ namespace ExamAttemptService.Models
         public DateTime? SubmittedAt { get; set; }
         public DateTime? ActualEndTime { get; set; }
         public DateTime? LastSyncedAt { get; set; }
-        
+
         // Pause/Resume tracking
         public DateTime? LastPausedAt { get; set; }
         public int TotalPausedSeconds { get; set; } = 0;
-        
+
         // Admin overrides
         public int ExtraTimeGrantedMinutes { get; set; } = 0;
         public string? TerminationReason { get; set; }
@@ -39,16 +40,16 @@ namespace ExamAttemptService.Models
 
         // Examination Data
         public List<Answer> Answers { get; set; } = new();
-        public Dictionary<string, bool> QuestionFlags { get; set; } = new(); // For "Mark for Review"
-        
-        // Navigation tracking (which questions the student has visited)
+        public Dictionary<string, bool> QuestionFlags { get; set; } = new();
+
+        // Navigation tracking
         public HashSet<string> VisitedQuestions { get; set; } = new();
 
         // Evaluation
         public int TimeSpentMinutes { get; set; }
         public double? Score { get; set; }
         public double? Percentage { get; set; }
-        public string? Result { get; set; } // Pass/Fail
+        public string? Result { get; set; }
         public bool AutoSubmitted { get; set; } = false;
 
         // Advanced Activity Logging
@@ -58,14 +59,13 @@ namespace ExamAttemptService.Models
     public class Answer
     {
         public string QuestionId { get; set; } = string.Empty;
-        public string? SelectedOption { get; set; } // For MCQ single
-        public List<string> SelectedOptions { get; set; } = new(); // For multiple correct
-        public string? TextAnswer { get; set; } // For subjective
-        public string? CodeAnswer { get; set; } // For code evaluation
+        public string? SelectedOption { get; set; }
+        public List<string> SelectedOptions { get; set; } = new();
+        public string? TextAnswer { get; set; }
+        public string? CodeAnswer { get; set; }
         public DateTime? AnsweredAt { get; set; }
         public DateTime? LastModifiedAt { get; set; }
-        
-        // Evaluation metadata
+
         public bool IsCorrect { get; set; } = false;
         public double MarksAwarded { get; set; } = 0;
     }
@@ -75,7 +75,7 @@ namespace ExamAttemptService.Models
         public EventType Type { get; set; }
         public string Description { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-        public string? QuestionId { get; set; } // Optional: contextual to a specific question
+        public string? QuestionId { get; set; }
     }
 
     #endregion
@@ -86,12 +86,12 @@ namespace ExamAttemptService.Models
     {
         NotStarted,
         InProgress,
-        Paused,       // Added for pausing logic
+        Paused,
         Submitted,
         Evaluated,
-        Expired,      // Time ran out
-        Terminated,   // Forced end (e.g., cheating detected)
-        Invalidated   // Admin marked as void
+        Expired,
+        Terminated,
+        Invalidated
     }
 
     public enum EventType
@@ -107,12 +107,12 @@ namespace ExamAttemptService.Models
         TimeExtended,
         AnswerSaved,
         FlagToggled,
-        Navigation,       // Moved Next/Previous
-        WindowBlurred,    // Tab switch/Loss of focus (Proctoring)
-        WindowFocused,    // Returned to tab
-        Disconnected,     // WebSocket/Client ping lost
+        Navigation,
+        WindowBlurred,
+        WindowFocused,
+        Disconnected,
         Reconnected,
-        Sync              // Local storage sync
+        Sync
     }
 
     #endregion
@@ -148,6 +148,7 @@ namespace ExamAttemptService.Models
     public class ExtendTimeRequest
     {
         [Required]
+        [Range(1, 300)]
         public int ExtraMinutes { get; set; }
         public string Reason { get; set; } = string.Empty;
     }
@@ -160,9 +161,25 @@ namespace ExamAttemptService.Models
         public string? QuestionId { get; set; }
     }
 
+    public class SyncAttemptRequest
+    {
+        public List<SyncAnswerItem> Answers { get; set; } = new();
+        public string? CurrentQuestionId { get; set; }
+    }
+
+    public class SyncAnswerItem
+    {
+        [Required]
+        public string QuestionId { get; set; } = string.Empty;
+        public string? SelectedOption { get; set; }
+        public List<string> SelectedOptions { get; set; } = new();
+        public string? TextAnswer { get; set; }
+        public string? CodeAnswer { get; set; }
+    }
+
     #endregion
 
-    #region Response DTOs
+    #region Response & Cross-Service Contracts
 
     public class AttemptDto
     {
@@ -170,24 +187,23 @@ namespace ExamAttemptService.Models
         public string ExamId { get; set; } = string.Empty;
         public string StudentId { get; set; } = string.Empty;
         public string StudentName { get; set; } = string.Empty;
-        
+
         public DateTime StartedAt { get; set; }
         public DateTime? SubmittedAt { get; set; }
         public AttemptStatus Status { get; set; }
-        
+
         public int TimeSpentMinutes { get; set; }
         public int ExtraTimeGrantedMinutes { get; set; }
-        
+
         public double? Score { get; set; }
         public double? Percentage { get; set; }
         public string? Result { get; set; }
-        
+
         public int TotalQuestions { get; set; }
         public int AnsweredQuestions { get; set; }
         public int FlaggedQuestions { get; set; }
     }
 
-    // DTO returned for the `/navigation` endpoint
     public class NavigationStateDto
     {
         public string AttemptId { get; set; } = string.Empty;
@@ -201,6 +217,38 @@ namespace ExamAttemptService.Models
         public bool IsAnswered { get; set; }
         public bool IsFlagged { get; set; }
         public bool IsVisited { get; set; }
+    }
+
+    public class AttemptExamMetadata
+    {
+        public string ExamId { get; set; } = string.Empty;
+        public int DurationMinutes { get; set; } = 60;
+        public string Status { get; set; } = string.Empty;
+        public DateTime? ScheduledStartTime { get; set; }
+        public DateTime? ScheduledEndTime { get; set; }
+        public List<string> QuestionIds { get; set; } = new();
+        public List<string> AllowedStudents { get; set; } = new();
+        public List<string> BlockedStudents { get; set; } = new();
+        public bool RandomizeQuestions { get; set; }
+    }
+
+    public class AttemptQuestionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string QuestionText { get; set; } = string.Empty;
+        public string Type { get; set; } = "MCQ";
+        public List<AttemptQuestionOptionDto> Options { get; set; } = new();
+        public double Marks { get; set; }
+        public double? NegativeMarks { get; set; }
+        public string? ImageUrl { get; set; }
+        public string? CodeSnippet { get; set; }
+    }
+
+    public class AttemptQuestionOptionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public string? ImageUrl { get; set; }
     }
 
     #endregion

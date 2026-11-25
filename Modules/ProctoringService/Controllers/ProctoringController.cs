@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using ProctoringService.Models;
 using ProctoringService.Services;
 
@@ -21,14 +22,17 @@ namespace ProctoringService.Controllers
             _logger = logger;
         }
 
+        private string? GetUserId() => User.FindFirst("userId")?.Value;
+        private bool IsStaff() => User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin";
+
         [HttpPost("start")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> StartProctoring([FromBody] StartProctoringRequest request)
         {
-            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var userId = GetUserId() ?? string.Empty;
+
             var session = await _proctoringService.StartSessionAsync(request.AttemptId, request.ExamId, userId);
-            
             return Ok(new { message = "Proctoring session started", session });
         }
 
@@ -37,20 +41,8 @@ namespace ProctoringService.Controllers
         public async Task<IActionResult> GetSession(string sessionId)
         {
             var session = await _proctoringService.GetSessionAsync(sessionId);
-            
-            if (session == null)
-            {
-                return NotFound(new { message = "Session not found" });
-            }
-
-            // Students can only view their own sessions
-            var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-            
-            if (role == "Student" && session.StudentId != userId)
-            {
-                return Forbid();
-            }
+            if (session == null) return NotFound(new { message = "Session not found" });
+            if (!IsStaff() && session.StudentId != GetUserId()) return Forbid();
 
             return Ok(session);
         }
@@ -60,17 +52,14 @@ namespace ProctoringService.Controllers
         public async Task<IActionResult> GetSessionByAttempt(string attemptId)
         {
             var session = await _proctoringService.GetActiveSessionByAttemptAsync(attemptId);
-            
-            if (session == null)
-            {
-                return NotFound(new { message = "No active proctoring session found" });
-            }
+            if (session == null) return NotFound(new { message = "No active proctoring session found" });
+            if (!IsStaff() && session.StudentId != GetUserId()) return Forbid();
 
             return Ok(session);
         }
 
         [HttpGet("exam/{examId}/sessions")]
-        [Authorize(Roles = "1,2,3,Teacher,Admin,SuperAdmin")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> GetExamSessions(string examId)
         {
             var sessions = await _proctoringService.GetSessionsByExamAsync(examId);
@@ -78,37 +67,38 @@ namespace ProctoringService.Controllers
         }
 
         [HttpPost("violation")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> ReportViolation([FromBody] ReportViolationRequest request)
         {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var session = await _proctoringService.GetSessionAsync(request.SessionId);
+            if (session == null) return NotFound(new { message = "Session not found" });
+            if (!IsStaff() && session.StudentId != GetUserId()) return Forbid();
+
             var violation = new Violation
             {
                 Type = request.Type,
                 Description = request.Description,
                 Severity = request.Severity,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                SnapshotUrl = !string.IsNullOrEmpty(request.SnapshotBase64) ? Guid.NewGuid().ToString() : null
             };
 
-            if (!string.IsNullOrEmpty(request.SnapshotBase64))
-            {
-                // Store snapshot reference
-                violation.SnapshotUrl = Guid.NewGuid().ToString();
-            }
-
             var success = await _proctoringService.ReportViolationAsync(request.SessionId, violation);
-            
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to report violation" });
-            }
+            if (!success) return BadRequest(new { message = "Failed to report violation" });
 
             return Ok(new { message = "Violation reported", violation });
         }
 
         [HttpPost("snapshot")]
-        [Authorize(Roles = "0,Student")]
+        [Authorize]
         public async Task<IActionResult> SubmitSnapshot([FromBody] SubmitSnapshotRequest request)
         {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var session = await _proctoringService.GetSessionAsync(request.SessionId);
+            if (session == null) return NotFound(new { message = "Session not found" });
+            if (!IsStaff() && session.StudentId != GetUserId()) return Forbid();
+
             var snapshot = new Snapshot
             {
                 ImageBase64 = request.ImageBase64,
@@ -117,13 +107,17 @@ namespace ProctoringService.Controllers
             };
 
             var success = await _proctoringService.SubmitSnapshotAsync(request.SessionId, snapshot);
-            
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to submit snapshot" });
-            }
+            if (!success) return BadRequest(new { message = "Failed to submit snapshot or snapshot exceeds size limit" });
 
             return Ok(new { message = "Snapshot submitted", snapshotId = snapshot.Id, analysis = snapshot.Analysis });
+        }
+
+        [HttpPost("session/{sessionId}/suspend")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> SuspendSession(string sessionId, [FromQuery] string? reason = null)
+        {
+            var success = await _proctoringService.SuspendSessionAsync(sessionId, reason ?? "Suspended by proctor");
+            return success ? Ok(new { message = "Proctoring session suspended" }) : NotFound(new { message = "Session not found" });
         }
 
         [HttpPost("session/{sessionId}/end")]
@@ -131,27 +125,11 @@ namespace ProctoringService.Controllers
         public async Task<IActionResult> EndSession(string sessionId)
         {
             var session = await _proctoringService.GetSessionAsync(sessionId);
-            
-            if (session == null)
-            {
-                return NotFound(new { message = "Session not found" });
-            }
-
-            // Students can only end their own sessions
-            var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-            
-            if (role == "Student" && session.StudentId != userId)
-            {
-                return Forbid();
-            }
+            if (session == null) return NotFound(new { message = "Session not found" });
+            if (!IsStaff() && session.StudentId != GetUserId()) return Forbid();
 
             var success = await _proctoringService.EndSessionAsync(sessionId);
-            
-            if (!success)
-            {
-                return BadRequest(new { message = "Failed to end session" });
-            }
+            if (!success) return BadRequest(new { message = "Failed to end session" });
 
             return Ok(new { message = "Proctoring session ended" });
         }

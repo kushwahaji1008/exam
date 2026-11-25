@@ -37,7 +37,8 @@ namespace CourseService.Controllers.V1
         [HttpPatch("{itemId}")]
         public async Task<IActionResult> PatchItem(string courseId, string sectionId, string itemId, [FromBody] object request)
         {
-            return Ok(new { message = "Curriculum item updated" });
+            var success = await _courseService.PatchCurriculumItemAsync(courseId, sectionId, itemId, request);
+            return success ? Ok(new { message = "Curriculum item updated" }) : NotFound(new { message = "Course, section, or item not found, or invalid payload" });
         }
 
         [HttpDelete("{itemId}")]
