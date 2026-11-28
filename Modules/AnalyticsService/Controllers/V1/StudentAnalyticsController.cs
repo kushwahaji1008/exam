@@ -20,7 +20,7 @@ namespace AnalyticsService.Controllers
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
         private bool CanAccessUser(string userId) =>
-            GetUserId() == userId || User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin";
+            GetUserId() == userId || User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
 
         [HttpGet]
         public async Task<IActionResult> GetUserSummary(string userId) =>

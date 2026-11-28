@@ -1526,4 +1526,107 @@ public class ApiIntegrationTests : IClassFixture<ExamApiFactory>
         Assert.Equal(100m, debitTxns.GetProperty("transactions")[0].GetProperty("amount").GetDecimal());
         Assert.Equal("ExamSeriesPurchase", debitTxns.GetProperty("transactions")[0].GetProperty("sourceService").GetString());
     }
+
+    [Fact]
+    public async Task ExamCreation_AtomicStatusSectionsValidationAndUpdate_Work()
+    {
+        var (_, teacherToken, _) = await SeedAndLoginUserAsync($"teach_excr_{Guid.NewGuid():N}@example.com", UserRole.Teacher);
+        var (studentId, _, _) = await SeedAndLoginUserAsync($"stud_excr_{Guid.NewGuid():N}@example.com", UserRole.Student);
+
+        using var teacherClient = _factory.CreateClient();
+        teacherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", teacherToken);
+
+        // 1. Validation rejections (end < start, passing > total, discount > price)
+        var now = DateTime.UtcNow;
+        Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "Invalid Schedule Exam",
+            durationMinutes = 30,
+            totalMarks = 50,
+            passingMarks = 20,
+            scheduledStartTime = now.AddHours(2),
+            scheduledEndTime = now.AddHours(1)
+        })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "Invalid Passing Marks",
+            durationMinutes = 30,
+            totalMarks = 20,
+            passingMarks = 30
+        })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "Invalid Discount",
+            durationMinutes = 30,
+            totalMarks = 20,
+            passingMarks = 10,
+            price = 50m,
+            discountPrice = 90m
+        })).StatusCode);
+
+        // 2. Single atomic POST /api/v1/exams persists status (Active), blockedStudents, blank-title section normalization & price
+        var createResp = await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            courseId = "",
+            title = "Atomic Active Exam",
+            description = "",
+            durationMinutes = 45,
+            scheduledStartTime = now.AddMinutes(-5),
+            scheduledEndTime = now.AddHours(2),
+            type = 2, // Mixed
+            status = 3, // Active directly
+            questionIds = Array.Empty<string>(),
+            sections = new[]
+            {
+                new { title = "", description = "", orderIndex = 0, questionIds = Array.Empty<string>() },
+                new { title = "Part B", description = "Second", orderIndex = 1, questionIds = Array.Empty<string>() }
+            },
+            totalMarks = 50,
+            passingMarks = 20,
+            price = 40m,
+            discountPrice = 25m,
+            allowedStudents = Array.Empty<string>(),
+            blockedStudents = new[] { studentId }
+        });
+        createResp.EnsureSuccessStatusCode();
+        var createdDto = (await createResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exam");
+        var examId = createdDto.GetProperty("examId").GetString()!;
+        Assert.Equal(3, createdDto.GetProperty("status").GetInt32()); // ExamStatus.Active directly on create!
+        Assert.Equal(2, createdDto.GetProperty("sectionCount").GetInt32());
+        Assert.Equal(25m, createdDto.GetProperty("discountPrice").GetDecimal());
+
+        var fetchedExam = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/exams/{examId}");
+        Assert.Equal("Section 1", fetchedExam.GetProperty("sections")[0].GetProperty("title").GetString());
+        Assert.Equal(studentId, fetchedExam.GetProperty("blockedStudents")[0].GetString());
+
+        // 3. PUT update tolerates empty section titles & omitted createdBy cleanly
+        var putResp = await teacherClient.PutAsJsonAsync($"/api/v1/exams/{examId}", new
+        {
+            examId,
+            courseId = "",
+            title = "Updated Atomic Exam",
+            description = "",
+            durationMinutes = 60,
+            type = 0,
+            status = 3,
+            questionIds = Array.Empty<string>(),
+            sections = new[]
+            {
+                new { title = "", description = "", orderIndex = 0, questionIds = Array.Empty<string>() }
+            },
+            totalMarks = 100,
+            passingMarks = 40,
+            price = 0m,
+            discountPrice = 0m,
+            allowedStudents = Array.Empty<string>(),
+            blockedStudents = Array.Empty<string>()
+        });
+        putResp.EnsureSuccessStatusCode();
+
+        var afterPut = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/exams/{examId}");
+        Assert.Equal("Updated Atomic Exam", afterPut.GetProperty("title").GetString());
+        Assert.Equal("Section 1", afterPut.GetProperty("sections")[0].GetProperty("title").GetString());
+    }
 }

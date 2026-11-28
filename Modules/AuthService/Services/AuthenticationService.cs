@@ -850,8 +850,8 @@ namespace AuthService.Services
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserId),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.FullName),
-                new Claim("role", ((int)user.Role).ToString()),
                 new Claim(ClaimTypes.Role, user.Role.ToString()),
+                new Claim("roleId", ((int)user.Role).ToString()),
                 new Claim("userId", user.UserId),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };

@@ -23,7 +23,7 @@ namespace ProctoringService.Controllers
         }
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
-        private bool IsStaff() => User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin";
+        private bool IsStaff() => User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
 
         [HttpPost("start")]
         [Authorize]

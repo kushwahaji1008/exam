@@ -26,7 +26,9 @@ namespace CourseService.Controllers.V1
         }
 
         private string? GetCurrentUserId() => User.FindFirst("userId")?.Value;
-        private string? GetCurrentUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+        private string? GetCurrentUserRole() =>
+            User.FindAll(ClaimTypes.Role).Select(c => c.Value).FirstOrDefault(v => !int.TryParse(v, out _))
+            ?? User.FindFirst(ClaimTypes.Role)?.Value;
 
         // ==========================================
         // 1. CORE CRUD & LIFECYCLE

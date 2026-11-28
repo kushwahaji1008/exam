@@ -247,8 +247,7 @@ namespace VideoClassesService.Controllers
             var course = chapter != null ? await _courseService.GetCourseByIdAsync(chapter.CourseId) : null;
 
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+            bool isStaff = User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin") ||
                            (course != null && course.InstructorId == userId);
 
             if (isStaff || lesson.IsFree || (course != null && course.IsFree))
@@ -356,10 +355,10 @@ namespace VideoClassesService.Controllers
         public async Task<IActionResult> DeleteComment(string commentId)
         {
             var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            bool isStaff = User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
             var existing = await _commentService.GetCommentByIdAsync(commentId);
             if (existing == null) return NotFound(new { message = "Comment not found" });
-            if (existing.StudentId != userId && role is not ("Teacher" or "Admin" or "SuperAdmin"))
+            if (existing.StudentId != userId && !isStaff)
                 return Forbid();
 
             var deleted = await _commentService.DeleteCommentAsync(commentId);

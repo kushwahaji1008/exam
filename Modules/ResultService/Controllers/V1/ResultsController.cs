@@ -20,8 +20,7 @@ namespace ResultService.Controllers
         }
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
-        private string? GetUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
-        private bool IsStaff() => GetUserRole() is "Teacher" or "Admin" or "SuperAdmin";
+        private bool IsStaff() => User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
 
         // ==========================================
         // 1. CORE & LIFECYCLE

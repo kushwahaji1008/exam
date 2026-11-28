@@ -61,9 +61,9 @@ namespace ExamService.Services
 
         #region 1. CORE CRUD OPERATIONS
 
-        public async Task<Exam> CreateExamAsync(CreateExamRequest request, string userId)
+        private static List<ExamSection> NormalizeSections(IEnumerable<ExamSection>? sections)
         {
-            var normalizedSections = (request.Sections ?? new List<ExamSection>())
+            return (sections ?? Enumerable.Empty<ExamSection>())
                 .Select((s, idx) => new ExamSection
                 {
                     Id = string.IsNullOrWhiteSpace(s.Id) ? Guid.NewGuid().ToString() : s.Id,
@@ -73,14 +73,19 @@ namespace ExamService.Services
                     QuestionIds = (s.QuestionIds ?? new List<string>()).Where(q => !string.IsNullOrWhiteSpace(q)).Distinct().ToList()
                 })
                 .ToList();
+        }
+
+        public async Task<Exam> CreateExamAsync(CreateExamRequest request, string userId)
+        {
+            var normalizedSections = NormalizeSections(request.Sections);
 
             var exam = new Exam
             {
                 ExamId = await GenerateUniqueExamIdAsync(),
-                CourseId = request.CourseId,
-                Title = request.Title,
-                Description = request.Description,
-                DurationMinutes = request.DurationMinutes,
+                CourseId = request.CourseId ?? string.Empty,
+                Title = request.Title.Trim(),
+                Description = request.Description ?? string.Empty,
+                DurationMinutes = Math.Max(1, request.DurationMinutes),
                 ScheduledStartTime = request.ScheduledStartTime,
                 ScheduledEndTime = request.ScheduledEndTime,
                 Type = request.Type,
@@ -88,15 +93,16 @@ namespace ExamService.Services
                 Sections = normalizedSections,
                 Settings = request.Settings ?? new ExamSettings(),
                 Grading = request.Grading ?? new ExamGrading(),
-                TotalMarks = request.TotalMarks,
-                PassingMarks = request.PassingMarks,
+                TotalMarks = Math.Max(0, request.TotalMarks),
+                PassingMarks = Math.Max(0, request.PassingMarks),
                 Price = Math.Max(0m, request.Price),
                 DiscountPrice = Math.Max(0m, request.DiscountPrice),
-                AllowedStudents = request.AllowedStudents ?? new List<string>(),
+                AllowedStudents = (request.AllowedStudents ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList(),
+                BlockedStudents = (request.BlockedStudents ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList(),
                 InstructionsHtml = request.InstructionsHtml,
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow,
-                Status = ExamStatus.Draft,
+                Status = request.Status ?? ExamStatus.Draft,
                 Version = "1.0",
                 IsLatestVersion = true
             };
@@ -150,6 +156,16 @@ namespace ExamService.Services
 
             updatedExam.Id = existing.Id;
             updatedExam.ExamId = existing.ExamId;
+            updatedExam.CourseId ??= string.Empty;
+            updatedExam.Title = string.IsNullOrWhiteSpace(updatedExam.Title) ? existing.Title : updatedExam.Title.Trim();
+            updatedExam.Description ??= string.Empty;
+            updatedExam.DurationMinutes = Math.Max(1, updatedExam.DurationMinutes);
+            updatedExam.QuestionIds = (updatedExam.QuestionIds ?? new List<string>()).Where(q => !string.IsNullOrWhiteSpace(q)).Distinct().ToList();
+            updatedExam.Sections = NormalizeSections(updatedExam.Sections);
+            updatedExam.AllowedStudents = (updatedExam.AllowedStudents ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+            updatedExam.BlockedStudents = (updatedExam.BlockedStudents ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+            updatedExam.Price = Math.Max(0m, updatedExam.Price);
+            updatedExam.DiscountPrice = Math.Max(0m, updatedExam.DiscountPrice);
             updatedExam.CreatedBy = existing.CreatedBy;
             updatedExam.CreatedAt = existing.CreatedAt;
             updatedExam.UpdatedAt = DateTime.UtcNow;

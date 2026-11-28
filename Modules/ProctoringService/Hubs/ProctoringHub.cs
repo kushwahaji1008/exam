@@ -20,17 +20,17 @@ namespace ProctoringService.Hubs
         public override async Task OnConnectedAsync()
         {
             var userId = Context.User?.FindFirst("userId")?.Value;
-            var role = Context.User?.FindFirst(ClaimTypes.Role)?.Value;
+            var isStaff = Context.User != null && (Context.User.IsInRole("Teacher") || Context.User.IsInRole("Admin") || Context.User.IsInRole("SuperAdmin"));
 
             _logger.LogInformation("User {UserId} connected to proctoring hub", userId);
 
-            if (role == "Student")
-            {
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"student_{userId}");
-            }
-            else if (role is "Teacher" or "Admin" or "SuperAdmin")
+            if (isStaff)
             {
                 await Groups.AddToGroupAsync(Context.ConnectionId, "proctors");
+            }
+            else if (Context.User?.IsInRole("Student") == true)
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"student_{userId}");
             }
 
             await base.OnConnectedAsync();

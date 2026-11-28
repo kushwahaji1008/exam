@@ -19,7 +19,9 @@ namespace AnalyticsService.Controllers
         }
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
-        private string? GetRole() => User.FindFirst(ClaimTypes.Role)?.Value;
+        private string? GetRole() =>
+            User.FindAll(ClaimTypes.Role).Select(c => c.Value).FirstOrDefault(v => !int.TryParse(v, out _))
+            ?? User.FindFirst(ClaimTypes.Role)?.Value;
 
         [HttpGet("dashboard")]
         public async Task<IActionResult> GetGeneralDashboard() =>

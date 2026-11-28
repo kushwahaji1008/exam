@@ -32,11 +32,10 @@ namespace CourseService.Controllers.V1
             if (course == null || section == null) return NotFound();
 
             var userId = User.FindFirst("userId")?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
             bool hasAccess = false;
             if (!string.IsNullOrEmpty(userId))
             {
-                bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+                bool isStaff = User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin") ||
                                course.CreatedBy == userId ||
                                course.InstructorIds.Contains(userId);
                 hasAccess = isStaff ||

@@ -22,8 +22,7 @@ namespace QuestionBankService.Controllers.V1
         }
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
-        private string? GetUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
-        private bool IsAdmin() => GetUserRole() is "Admin" or "SuperAdmin";
+        private bool IsAdmin() => User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
 
         #region 1. Questions (CRUD)
 
@@ -434,8 +433,7 @@ namespace QuestionBankService.Controllers.V1
                 return BadRequest(new { message = "Provide between 0 and 200 question IDs." });
 
             var questions = await _questionService.GetQuestionsByIdsAsync(questionIds);
-            var role = GetUserRole();
-            if (role is "Teacher" or "Admin" or "SuperAdmin")
+            if (User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin"))
                 return Ok(questions.Select(QuestionService.ToQuestionWithAnswer).ToList());
 
             return Ok(questions.Select(QuestionService.ToQuestionDto).ToList());

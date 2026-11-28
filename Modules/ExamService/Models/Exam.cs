@@ -31,7 +31,6 @@ namespace ExamService.Models
         public ExamType Type { get; set; } = ExamType.MCQ;
         public ExamStatus Status { get; set; } = ExamStatus.Draft;
 
-        [Required]
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
@@ -71,8 +70,7 @@ namespace ExamService.Models
         [BsonId]
         [BsonRepresentation(BsonType.String)]
         public string Id { get; set; } = Guid.NewGuid().ToString();
-        
-        [Required]
+
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public int OrderIndex { get; set; } = 0;
@@ -134,11 +132,13 @@ namespace ExamService.Models
         public string Description { get; set; } = string.Empty;
 
         [Required]
-        public int DurationMinutes { get; set; }
+        [Range(1, 1440)]
+        public int DurationMinutes { get; set; } = 60;
         public DateTime? ScheduledStartTime { get; set; }
         public DateTime? ScheduledEndTime { get; set; }
         
         public ExamType Type { get; set; } = ExamType.MCQ;
+        public ExamStatus? Status { get; set; }
 
         public List<string> QuestionIds { get; set; } = new();
         public List<ExamSection> Sections { get; set; } = new();
@@ -153,6 +153,7 @@ namespace ExamService.Models
         public decimal DiscountPrice { get; set; } = 0m;
 
         public List<string> AllowedStudents { get; set; } = new();
+        public List<string> BlockedStudents { get; set; } = new();
         public string? InstructionsHtml { get; set; }
     }
 

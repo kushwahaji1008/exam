@@ -19,7 +19,7 @@ namespace ResultService.Controllers
         }
 
         private string? GetUserId() => User.FindFirst("userId")?.Value;
-        private bool IsStaff() => User.FindFirst(ClaimTypes.Role)?.Value is "Teacher" or "Admin" or "SuperAdmin" or "System";
+        private bool IsStaff() => User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin") || User.IsInRole("System");
 
         [HttpGet]
         [Authorize(Roles = "Admin,SuperAdmin,Teacher")]

@@ -22,8 +22,10 @@ namespace ExamService.Controllers.V1
         }
 
         private string? GetCurrentUserId() => User.FindFirst("userId")?.Value;
-        private string? GetCurrentUserRole() => User.FindFirst(ClaimTypes.Role)?.Value;
-        private bool IsStaff() => GetCurrentUserRole() is "Teacher" or "Admin" or "SuperAdmin";
+        private string? GetCurrentUserRole() =>
+            User.FindAll(ClaimTypes.Role).Select(c => c.Value).FirstOrDefault(v => !int.TryParse(v, out _))
+            ?? User.FindFirst(ClaimTypes.Role)?.Value;
+        private bool IsStaff() => User.IsInRole("Teacher") || User.IsInRole("Admin") || User.IsInRole("SuperAdmin");
 
         // ==========================================
         // CORE CRUD
@@ -42,7 +44,21 @@ namespace ExamService.Controllers.V1
         public async Task<IActionResult> CreateExam([FromBody] CreateExamRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            var exam = await _examService.CreateExamAsync(request, GetCurrentUserId()!);
+            if (request.ScheduledStartTime.HasValue && request.ScheduledEndTime.HasValue &&
+                request.ScheduledEndTime.Value < request.ScheduledStartTime.Value)
+            {
+                return BadRequest(new { message = "Scheduled end time must be after scheduled start time." });
+            }
+            if (request.TotalMarks > 0 && request.PassingMarks > request.TotalMarks)
+            {
+                return BadRequest(new { message = "Passing marks cannot exceed total marks." });
+            }
+            if (request.DiscountPrice > 0 && request.DiscountPrice > request.Price)
+            {
+                return BadRequest(new { message = "Discount price cannot exceed regular price." });
+            }
+
+            var exam = await _examService.CreateExamAsync(request, GetCurrentUserId() ?? "SYSTEM");
             return Ok(new { message = "Exam created", exam = ExamManagementService.ToExamDto(exam) });
         }
 
@@ -98,6 +114,21 @@ namespace ExamService.Controllers.V1
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> UpdateExam(string examId, [FromBody] Exam updatedExam)
         {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            if (updatedExam.ScheduledStartTime.HasValue && updatedExam.ScheduledEndTime.HasValue &&
+                updatedExam.ScheduledEndTime.Value < updatedExam.ScheduledStartTime.Value)
+            {
+                return BadRequest(new { message = "Scheduled end time must be after scheduled start time." });
+            }
+            if (updatedExam.TotalMarks > 0 && updatedExam.PassingMarks > updatedExam.TotalMarks)
+            {
+                return BadRequest(new { message = "Passing marks cannot exceed total marks." });
+            }
+            if (updatedExam.DiscountPrice > 0 && updatedExam.DiscountPrice > updatedExam.Price)
+            {
+                return BadRequest(new { message = "Discount price cannot exceed regular price." });
+            }
+
             var success = await _examService.UpdateExamAsync(examId, updatedExam);
             return success ? Ok(new { message = "Exam updated" }) : NotFound(new { message = "Exam not found" });
         }
