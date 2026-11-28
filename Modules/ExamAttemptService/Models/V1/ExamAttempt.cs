@@ -230,6 +230,7 @@ namespace ExamAttemptService.Models
         public List<string> AllowedStudents { get; set; } = new();
         public List<string> BlockedStudents { get; set; } = new();
         public bool RandomizeQuestions { get; set; }
+        public decimal EffectivePrice { get; set; } = 0m;
     }
 
     public class AttemptQuestionDto

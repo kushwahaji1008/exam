@@ -42,7 +42,8 @@ namespace ExamAttemptService.Controllers
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
             var userName = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
 
-            var (success, message, attempt) = await _attemptService.CreateAndValidateAttemptAsync(request.ExamId, userId, userName);
+            var (success, message, attempt) = await _attemptService.CreateAndValidateAttemptAsync(
+                request.ExamId, userId, userName, skipPurchaseCheck: IsStaff());
             if (!success || attempt == null)
                 return BadRequest(new { message });
 

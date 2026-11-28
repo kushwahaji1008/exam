@@ -70,6 +70,13 @@ namespace AuthService.Models
         public int CurrentStreak { get; set; } = 0;
         public UserBadge Badge { get; set; } = UserBadge.Bronze;
 
+        // Referral Program
+        public string? ReferralCode { get; set; }
+        public string? ReferredByUserId { get; set; }
+        public string? ReferredByCode { get; set; }
+        public bool ReferralRewarded { get; set; } = false;
+        public DateTime? ReferralRewardedAt { get; set; }
+
         // OTP Fields for Email Verification / Password Reset
         public string? Otp { get; set; }
         public DateTime? OtpExpiry { get; set; }
@@ -151,6 +158,7 @@ namespace AuthService.Models
         [Required] public string FullName { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public UserRole Role { get; set; } = UserRole.Student;
+        public string? ReferralCode { get; set; }
     }
 
     public class LoginRequest
@@ -252,6 +260,9 @@ namespace AuthService.Models
         public string? ProfilePicture { get; set; }
         public bool IsEmailVerified { get; set; }
         public bool MfaEnabled { get; set; }
+        public string? ReferralCode { get; set; }
+        public string? ReferredByCode { get; set; }
+        public bool ReferralRewarded { get; set; }
     }
 
     public class UpdateProfileRequest

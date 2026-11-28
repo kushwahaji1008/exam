@@ -1,3 +1,5 @@
+using AuthService.Services;
+using EnrollmentService.Services;
 using ExamAttemptService.Models;
 using ExamAttemptService.Services;
 using ExamService.Controllers.V1;
@@ -12,6 +14,7 @@ using ResultService.Services;
 using CourseService.Services;
 using StorageService.Services;
 using VideoClassesService.Services;
+using WalletService.Services;
 
 namespace examsolution.Services;
 
@@ -35,11 +38,16 @@ public sealed class AttemptExamProviderAdapter : IAttemptExamProvider
 {
     private readonly ExamManagementService _examService;
     private readonly QuestionService _questionService;
+    private readonly EnrollmentManager _enrollmentManager;
 
-    public AttemptExamProviderAdapter(ExamManagementService examService, QuestionService questionService)
+    public AttemptExamProviderAdapter(
+        ExamManagementService examService,
+        QuestionService questionService,
+        EnrollmentManager enrollmentManager)
     {
         _examService = examService;
         _questionService = questionService;
+        _enrollmentManager = enrollmentManager;
     }
 
     public async Task<AttemptExamMetadata?> GetExamMetadataAsync(string examId)
@@ -63,8 +71,15 @@ public sealed class AttemptExamProviderAdapter : IAttemptExamProvider
             QuestionIds = questionIds,
             AllowedStudents = exam.AllowedStudents ?? new List<string>(),
             BlockedStudents = exam.BlockedStudents ?? new List<string>(),
-            RandomizeQuestions = exam.Settings?.RandomizeQuestions ?? false
+            RandomizeQuestions = exam.Settings?.RandomizeQuestions ?? false,
+            EffectivePrice = exam.GetEffectivePrice()
         };
+    }
+
+    public async Task<bool> HasExamPurchaseAccessAsync(string examId, string studentId)
+    {
+        var (hasAccess, _, _, _, _) = await _enrollmentManager.CheckExamAccessAsync(studentId, examId);
+        return hasAccess;
     }
 
     public async Task<List<AttemptQuestionDto>> GetSanitizedQuestionsAsync(IReadOnlyList<string> questionIds)
@@ -436,4 +451,126 @@ public sealed class ExamQuestionAutomationAdapter : IExamQuestionAutomation
             Sections = mappedSections
         };
     }
+}
+
+public sealed class AuthReferralRewardAdapter : IReferralRewardHandler
+{
+    private readonly WalletManager _walletManager;
+
+    public AuthReferralRewardAdapter(WalletManager walletManager)
+    {
+        _walletManager = walletManager;
+    }
+
+    public Task<(bool Success, string Message)> CreditReferralPairAsync(
+        string referrerUserId,
+        string referrerName,
+        string referredUserId,
+        string referredName,
+        string referredEmail,
+        string referralCode) =>
+        _walletManager.CreditReferralBonusPairAsync(
+            referrerUserId,
+            referrerName,
+            referredUserId,
+            referredName,
+            referredEmail,
+            referralCode);
+}
+
+public sealed class WalletReferralServiceAdapter : IWalletReferralService
+{
+    private readonly AuthenticationService _authService;
+
+    public WalletReferralServiceAdapter(AuthenticationService authService)
+    {
+        _authService = authService;
+    }
+
+    public Task<(string ReferralCode, bool CanApplyReferralCode, string? ReferredByCode, bool ReferralRewarded)> GetReferralStatusAsync(string userId) =>
+        _authService.GetUserReferralStatusAsync(userId);
+
+    public Task<(bool Success, string Message, string? AppliedCode)> ApplyReferralCodeAsync(string userId, string referralCode) =>
+        _authService.ApplyReferralCodeAsync(userId, referralCode);
+}
+
+public sealed class ExamPurchaseCatalogAdapter : IExamPurchaseCatalog
+{
+    private readonly ExamManagementService _examService;
+    private readonly ExamSeriesManagementService _seriesService;
+
+    public ExamPurchaseCatalogAdapter(
+        ExamManagementService examService,
+        ExamSeriesManagementService seriesService)
+    {
+        _examService = examService;
+        _seriesService = seriesService;
+    }
+
+    public async Task<PurchaseableExamInfo?> GetExamInfoAsync(string examId)
+    {
+        var exam = await _examService.GetExamByIdAsync(examId);
+        if (exam == null) return null;
+
+        return new PurchaseableExamInfo
+        {
+            ExamId = exam.ExamId,
+            Title = exam.Title,
+            Price = exam.Price,
+            DiscountPrice = exam.DiscountPrice,
+            IsOpenForPurchase = exam.Status is ExamStatus.Published or ExamStatus.Scheduled or ExamStatus.Active,
+            BlockedStudents = exam.BlockedStudents ?? new List<string>()
+        };
+    }
+
+    public async Task<PurchaseableSeriesInfo?> GetSeriesInfoAsync(string seriesId)
+    {
+        var series = await _seriesService.GetSeriesByIdAsync(seriesId);
+        if (series == null) return null;
+
+        return new PurchaseableSeriesInfo
+        {
+            SeriesId = series.SeriesId,
+            Title = series.Title,
+            Price = series.Price,
+            DiscountPrice = series.DiscountPrice,
+            ExamIds = series.ExamIds ?? new List<string>()
+        };
+    }
+
+    public async Task<HashSet<string>> GetSeriesExamIdsAsync(IEnumerable<string> seriesIds)
+    {
+        var allIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var seriesId in seriesIds.Distinct())
+        {
+            var series = await _seriesService.GetSeriesByIdAsync(seriesId);
+            if (series?.ExamIds == null) continue;
+            foreach (var examId in series.ExamIds)
+            {
+                if (!string.IsNullOrWhiteSpace(examId))
+                    allIds.Add(examId);
+            }
+        }
+        return allIds;
+    }
+}
+
+public sealed class VideoCoursePaymentAdapter : IVideoCoursePaymentHandler
+{
+    private readonly WalletManager _walletManager;
+
+    public VideoCoursePaymentAdapter(WalletManager walletManager)
+    {
+        _walletManager = walletManager;
+    }
+
+    public Task<(bool Success, string Message)> DebitForVideoCourseAsync(
+        string userId, string courseId, string courseTitle, decimal price) =>
+        _walletManager.DebitAsync(
+            userId,
+            price,
+            $"VCS_BUY_{userId}_{courseId}",
+            courseId,
+            "VideoCoursePurchase",
+            $"Purchased video course: {courseTitle}");
 }

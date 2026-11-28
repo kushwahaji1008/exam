@@ -211,6 +211,7 @@ builder.Services.AddHealthChecks();
 builder.Services.AddTransient<AuthService.Services.IEmailService, AuthService.Services.EmailService>();
 builder.Services.AddTransient<AuthService.Services.IPhoneService, AuthService.Services.PhoneService>();
 builder.Services.AddSingleton<AuthService.Services.MongoDbService>();
+builder.Services.AddScoped<AuthService.Services.IReferralRewardHandler, AuthReferralRewardAdapter>();
 builder.Services.AddScoped<AuthService.Services.AuthenticationService>();
 builder.Services.AddScoped<AuthService.Services.UserService>();
 builder.Services.AddScoped<AuthService.Services.RoleService>();
@@ -254,6 +255,7 @@ builder.Services.AddScoped<ProctoringService.Services.AIAnalysisService>();
 // --- VideoClassesService ---
 builder.Services.AddSingleton<VideoClassesService.Services.MongoDbService>();
 builder.Services.AddScoped<VideoClassesService.Services.LiveClassService>();
+builder.Services.AddScoped<VideoClassesService.Services.IVideoCoursePaymentHandler, VideoCoursePaymentAdapter>();
 builder.Services.AddScoped<VideoClassesService.Services.ProgressTrackingService>();
 builder.Services.AddScoped<VideoClassesService.Services.CommentService>();
 builder.Services.AddScoped<VideoClassesService.Services.CourseManagementService>();
@@ -268,6 +270,7 @@ builder.Services.AddScoped<AnalyticsService.Services.AnalyticsManagementService>
 
 // --- EnrollmentService ---
 builder.Services.AddSingleton<EnrollmentService.Services.MongoDbService>();
+builder.Services.AddScoped<EnrollmentService.Services.IExamPurchaseCatalog, ExamPurchaseCatalogAdapter>();
 builder.Services.AddScoped<EnrollmentService.Services.EnrollmentManager>();
 builder.Services.AddScoped<CourseService.Services.ICourseEnrollmentLookup>(sp =>
     sp.GetRequiredService<EnrollmentService.Services.EnrollmentManager>());
@@ -275,6 +278,7 @@ builder.Services.AddScoped<EnrollmentService.Clients.WalletServiceClient>();
 
 // --- WalletService ---
 builder.Services.AddSingleton<WalletService.Services.MongoDbService>();
+builder.Services.AddScoped<WalletService.Services.IWalletReferralService, WalletReferralServiceAdapter>();
 builder.Services.AddScoped<WalletService.Services.WalletManager>();
 
 // --- StorageService ---

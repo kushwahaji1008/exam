@@ -1295,4 +1295,235 @@ public class ApiIntegrationTests : IClassFixture<ExamApiFactory>
         Assert.Equal(5, autoQsList.Select(q => q.GetProperty("id").GetString()).Distinct().Count());
         Assert.All(autoQsList, q => Assert.False(q.GetProperty("isExamExclusive").GetBoolean()));
     }
+
+    [Fact]
+    public async Task Wallet_Dual100CoinReferrals_And_ExamCourseSeriesPurchases_Work()
+    {
+        using var anonClient = _factory.CreateClient();
+
+        // 1. Register & verify Student A cleanly without referral
+        var emailA = $"refA_{Guid.NewGuid():N}@example.com";
+        var regA = await anonClient.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = emailA,
+            password = "Password123!",
+            fullName = "Referrer Alice",
+            role = UserRole.Student
+        });
+        regA.EnsureSuccessStatusCode();
+        var otpA = await ReadOtpFromDbAsync(emailA);
+        var verA = await anonClient.PostAsJsonAsync("/api/v1/auth/verify-email", new { email = emailA, otp = otpA });
+        verA.EnsureSuccessStatusCode();
+        var docA = await verA.Content.ReadFromJsonAsync<JsonElement>();
+        var tokenA = docA.GetProperty("token").GetString()!;
+        var refCodeA = docA.GetProperty("user").GetProperty("referralCode").GetString()!;
+        Assert.False(string.IsNullOrWhiteSpace(refCodeA));
+
+        using var clientA = _factory.CreateClient();
+        clientA.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenA);
+
+        var balA0 = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(0m, balA0.GetProperty("balance").GetDecimal());
+
+        // Invalid referral code during signup must fail explicitly
+        var badReg = await anonClient.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = $"badref_{Guid.NewGuid():N}@example.com",
+            password = "Password123!",
+            fullName = "Bad Code User",
+            role = UserRole.Student,
+            referralCode = "DOESNOTEXIST99"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, badReg.StatusCode);
+
+        // 2. Register Student B using Student A's referral code -> credits 100 coins to BOTH upon email OTP verification
+        var emailB = $"refB_{Guid.NewGuid():N}@example.com";
+        var regB = await anonClient.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = emailB,
+            password = "Password123!",
+            fullName = "Referred Bob",
+            role = UserRole.Student,
+            referralCode = refCodeA
+        });
+        regB.EnsureSuccessStatusCode();
+
+        // Prior to OTP verification, Student A must NOT yet receive referral bonus
+        var balABeforeVerify = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(0m, balABeforeVerify.GetProperty("balance").GetDecimal());
+
+        var otpB = await ReadOtpFromDbAsync(emailB);
+        var verB = await anonClient.PostAsJsonAsync("/api/v1/auth/verify-email", new { email = emailB, otp = otpB });
+        verB.EnsureSuccessStatusCode();
+        var docB = await verB.Content.ReadFromJsonAsync<JsonElement>();
+        var tokenB = docB.GetProperty("token").GetString()!;
+        var refCodeB = docB.GetProperty("user").GetProperty("referralCode").GetString()!;
+        Assert.NotEqual(refCodeA, refCodeB);
+
+        using var clientB = _factory.CreateClient();
+        clientB.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenB);
+
+        // Both Student A and Student B now have +100 coins
+        var balA1 = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        var balB1 = await clientB.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(100m, balA1.GetProperty("balance").GetDecimal());
+        Assert.Equal(100m, balB1.GetProperty("balance").GetDecimal());
+
+        var summaryA = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/referral");
+        Assert.Equal(1, summaryA.GetProperty("totalReferrals").GetInt32());
+        Assert.Equal(100m, summaryA.GetProperty("totalCoinsEarned").GetDecimal());
+        Assert.Equal(100m, summaryA.GetProperty("rewardPerReferral").GetDecimal());
+
+        var summaryB = await clientB.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/referral");
+        Assert.Equal(refCodeA, summaryB.GetProperty("referredByCode").GetString());
+        Assert.Equal(100m, summaryB.GetProperty("welcomeBonusEarned").GetDecimal());
+        Assert.False(summaryB.GetProperty("canApplyReferralCode").GetBoolean());
+
+        // 3. Anti-abuse guards on /referral/apply: no double claim, no self-referral, no circular referral
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientB.PostAsJsonAsync("/api/v1/Wallet/referral/apply", new { referralCode = refCodeA })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientA.PostAsJsonAsync("/api/v1/Wallet/referral/apply", new { referralCode = refCodeA })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientA.PostAsJsonAsync("/api/v1/Wallet/referral/apply", new { referralCode = refCodeB })).StatusCode);
+
+        // 4. Verified Student C applies Student A's referral code from Wallet -> both earn +100 coins (A reaches 200, C reaches 100)
+        var emailC = $"refC_{Guid.NewGuid():N}@example.com";
+        (await anonClient.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = emailC,
+            password = "Password123!",
+            fullName = "Applied Charlie",
+            role = UserRole.Student
+        })).EnsureSuccessStatusCode();
+        var otpC = await ReadOtpFromDbAsync(emailC);
+        var verC = await anonClient.PostAsJsonAsync("/api/v1/auth/verify-email", new { email = emailC, otp = otpC });
+        verC.EnsureSuccessStatusCode();
+        var tokenC = (await verC.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+
+        using var clientC = _factory.CreateClient();
+        clientC.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenC);
+
+        var applyResp = await clientC.PostAsJsonAsync("/api/v1/Wallet/referral/apply", new { referralCode = refCodeA });
+        applyResp.EnsureSuccessStatusCode();
+        var applyDoc = await applyResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(100m, applyDoc.GetProperty("balance").GetDecimal());
+
+        var balA2 = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(200m, balA2.GetProperty("balance").GetDecimal());
+
+        var summaryA2 = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/referral");
+        Assert.Equal(2, summaryA2.GetProperty("totalReferrals").GetInt32());
+        Assert.Equal(200m, summaryA2.GetProperty("totalCoinsEarned").GetDecimal());
+
+        // 5. Teacher creates Paid Course (80 coins), Paid Exam (price 120, discount 60 => effective 60), and Paid Exam Series (100 coins containing Exam 2)
+        var (_, teacherToken, _) = await SeedAndLoginUserAsync($"teach_wal_{Guid.NewGuid():N}@example.com", UserRole.Teacher);
+        using var teacherClient = _factory.CreateClient();
+        teacherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", teacherToken);
+
+        var qResp = await teacherClient.PostAsJsonAsync("/api/v1/questions", new
+        {
+            questionText = "Paid exam Q1?",
+            type = 0,
+            options = new[] { new { id = "optA", text = "42" }, new { id = "optB", text = "99" } },
+            correctAnswer = "optA",
+            marks = 5.0,
+            difficultyId = "easy"
+        });
+        qResp.EnsureSuccessStatusCode();
+        var qId = (await qResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("question").GetProperty("id").GetString()!;
+
+        var crsResp = await teacherClient.PostAsJsonAsync("/api/v1/courses", new
+        {
+            title = "Coin Paid Course",
+            description = "Purchasable via referral coins",
+            level = 0,
+            coursePrice = 80m
+        });
+        crsResp.EnsureSuccessStatusCode();
+        var courseId = (await crsResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("courseId").GetString()!;
+        (await teacherClient.PostAsync($"/api/v1/courses/{courseId}/publish", null)).EnsureSuccessStatusCode();
+
+        var ex1Resp = await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "Paid Mock Test 1",
+            durationMinutes = 30,
+            questionIds = new[] { qId },
+            totalMarks = 5,
+            passingMarks = 2,
+            price = 120m,
+            discountPrice = 60m
+        });
+        ex1Resp.EnsureSuccessStatusCode();
+        var exam1Id = (await ex1Resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exam").GetProperty("examId").GetString()!;
+        (await teacherClient.PostAsync($"/api/v1/exams/{exam1Id}/activate", null)).EnsureSuccessStatusCode();
+
+        var ex2Resp = await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "Series Mock Test 2",
+            durationMinutes = 30,
+            questionIds = new[] { qId },
+            totalMarks = 5,
+            passingMarks = 2,
+            price = 90m
+        });
+        ex2Resp.EnsureSuccessStatusCode();
+        var exam2Id = (await ex2Resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exam").GetProperty("examId").GetString()!;
+        (await teacherClient.PostAsync($"/api/v1/exams/{exam2Id}/activate", null)).EnsureSuccessStatusCode();
+
+        var serResp = await teacherClient.PostAsJsonAsync("/api/v1/exam-series", new
+        {
+            title = "Pro Exam Series",
+            description = "Unlocks bundled exams",
+            price = 100m,
+            discountPrice = 0m
+        });
+        serResp.EnsureSuccessStatusCode();
+        var seriesId = (await serResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("seriesId").GetString()!;
+        (await teacherClient.PostAsJsonAsync($"/api/v1/exam-series/{seriesId}/add-exam", new { examId = exam2Id })).EnsureSuccessStatusCode();
+
+        // 6. Paid Exam Gating + Purchase with Referral Coins (Student B: 100 coins -> buys 60-coin exam -> 40 coins left)
+        var unpurchasedStart = await clientB.PostAsJsonAsync("/api/v1/attempts", new { examId = exam1Id });
+        Assert.Equal(HttpStatusCode.BadRequest, unpurchasedStart.StatusCode);
+
+        var accessBefore = await clientB.GetFromJsonAsync<JsonElement>($"/api/v1/Enrollment/check-exam-access/{exam1Id}");
+        Assert.False(accessBefore.GetProperty("hasAccess").GetBoolean());
+        Assert.Equal(60m, accessBefore.GetProperty("effectivePrice").GetDecimal());
+
+        (await clientB.PostAsJsonAsync("/api/v1/Enrollment/buy-exam", new { examId = exam1Id })).EnsureSuccessStatusCode();
+
+        // Re-buying same exam returns BadRequest without double-debiting
+        Assert.Equal(HttpStatusCode.BadRequest, (await clientB.PostAsJsonAsync("/api/v1/Enrollment/buy-exam", new { examId = exam1Id })).StatusCode);
+
+        var balB2 = await clientB.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(40m, balB2.GetProperty("balance").GetDecimal());
+
+        var attemptAfterBuy = await clientB.PostAsJsonAsync("/api/v1/attempts", new { examId = exam1Id });
+        attemptAfterBuy.EnsureSuccessStatusCode();
+
+        // Student B with 40 coins cannot buy 80-coin Course
+        var poorBuyCourse = await clientB.PostAsJsonAsync("/api/v1/Enrollment/buy", new { courseId });
+        Assert.Equal(HttpStatusCode.BadRequest, poorBuyCourse.StatusCode);
+
+        // 7. Student C (100 coins) buys 80-coin Course -> balance drops to 20 coins
+        (await clientC.PostAsJsonAsync("/api/v1/Enrollment/buy", new { courseId })).EnsureSuccessStatusCode();
+        var balC2 = await clientC.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(20m, balC2.GetProperty("balance").GetDecimal());
+        var crsAccessC = await clientC.GetFromJsonAsync<JsonElement>($"/api/v1/Enrollment/check-access/{courseId}");
+        Assert.True(crsAccessC.GetProperty("hasAccess").GetBoolean());
+
+        // 8. Student A (200 coins) buys 100-coin Exam Series -> balance 100 coins, exam2 inside series unlocked & startable
+        (await clientA.PostAsJsonAsync("/api/v1/Enrollment/buy-series", new { seriesId })).EnsureSuccessStatusCode();
+        var balA3 = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/balance");
+        Assert.Equal(100m, balA3.GetProperty("balance").GetDecimal());
+
+        var exam2AccessA = await clientA.GetFromJsonAsync<JsonElement>($"/api/v1/Enrollment/check-exam-access/{exam2Id}");
+        Assert.True(exam2AccessA.GetProperty("hasAccess").GetBoolean());
+
+        var startSeriesExamA = await clientA.PostAsJsonAsync("/api/v1/attempts", new { examId = exam2Id });
+        startSeriesExamA.EnsureSuccessStatusCode();
+
+        // Passbook transactions filter works cleanly for Student A
+        var debitTxns = await clientA.GetFromJsonAsync<JsonElement>("/api/v1/Wallet/transactions?type=DEBIT");
+        Assert.Equal(1, debitTxns.GetProperty("totalRecords").GetInt32());
+        Assert.Equal(100m, debitTxns.GetProperty("transactions")[0].GetProperty("amount").GetDecimal());
+        Assert.Equal("ExamSeriesPurchase", debitTxns.GetProperty("transactions")[0].GetProperty("sourceService").GetString());
+    }
 }

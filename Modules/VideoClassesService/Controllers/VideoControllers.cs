@@ -86,8 +86,15 @@ namespace VideoClassesService.Controllers
         public async Task<IActionResult> EnrollCourse(string courseId)
         {
             var userId = User.FindFirst("userId")?.Value ?? string.Empty;
-            var progress = await _progressService.EnrollStudentAsync(userId, courseId);
-            return Ok(new { message = "Enrolled successfully", progress });
+            try
+            {
+                var progress = await _progressService.EnrollStudentAsync(userId, courseId);
+                return Ok(new { message = "Enrolled successfully", progress });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("{courseId}/chapters")]

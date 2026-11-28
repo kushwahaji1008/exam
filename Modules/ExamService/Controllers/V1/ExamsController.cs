@@ -85,6 +85,8 @@ namespace ExamService.Controllers.V1
                     exam.InstructionsHtml,
                     exam.TotalMarks,
                     exam.PassingMarks,
+                    exam.Price,
+                    exam.DiscountPrice,
                     exam.Version
                 });
             }

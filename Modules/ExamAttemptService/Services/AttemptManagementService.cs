@@ -7,6 +7,7 @@ namespace ExamAttemptService.Services
     {
         Task<AttemptExamMetadata?> GetExamMetadataAsync(string examId);
         Task<List<AttemptQuestionDto>> GetSanitizedQuestionsAsync(IReadOnlyList<string> questionIds);
+        Task<bool> HasExamPurchaseAccessAsync(string examId, string studentId) => Task.FromResult(true);
     }
 
     public interface IAttemptSubmittedHandler
@@ -38,7 +39,7 @@ namespace ExamAttemptService.Services
         }
 
         public async Task<(bool Success, string Message, ExamAttempt? Attempt)> CreateAndValidateAttemptAsync(
-            string examId, string studentId, string studentName)
+            string examId, string studentId, string studentName, bool skipPurchaseCheck = false)
         {
             // Return existing in-progress/paused attempt idempotently
             var existingInProgress = await _mongoDb.ExamAttempts
@@ -63,6 +64,13 @@ namespace ExamAttemptService.Services
 
                 if (exam.AllowedStudents.Count > 0 && !exam.AllowedStudents.Contains(studentId))
                     return (false, "You are not registered for this exam.", null);
+
+                if (!skipPurchaseCheck && exam.EffectivePrice > 0)
+                {
+                    var purchased = await _examProvider.HasExamPurchaseAccessAsync(exam.ExamId, studentId);
+                    if (!purchased)
+                        return (false, $"This exam costs {exam.EffectivePrice} coins. Please purchase it with your wallet coins before starting.", null);
+                }
 
                 if (exam.ScheduledStartTime.HasValue && DateTime.UtcNow < exam.ScheduledStartTime.Value &&
                     !exam.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))

@@ -9,6 +9,17 @@ using MongoDB.Driver;
 
 namespace AuthService.Services
 {
+    public interface IReferralRewardHandler
+    {
+        Task<(bool Success, string Message)> CreditReferralPairAsync(
+            string referrerUserId,
+            string referrerName,
+            string referredUserId,
+            string referredName,
+            string referredEmail,
+            string referralCode);
+    }
+
     public class AuthenticationService
     {
         private const int MaxOtpAttempts = 5;
@@ -18,17 +29,20 @@ namespace AuthService.Services
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
         private readonly AuditService? _auditService;
+        private readonly IReferralRewardHandler? _referralRewardHandler;
 
         public AuthenticationService(
             MongoDbService mongoDb,
             IConfiguration configuration,
             IEmailService emailService,
-            AuditService? auditService = null)
+            AuditService? auditService = null,
+            IReferralRewardHandler? referralRewardHandler = null)
         {
             _mongoDb = mongoDb;
             _configuration = configuration;
             _emailService = emailService;
             _auditService = auditService;
+            _referralRewardHandler = referralRewardHandler;
         }
 
         // ==========================================
@@ -54,8 +68,27 @@ namespace AuthService.Services
             string hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.Password);
             bool isApproved = (request.Role == UserRole.Student);
 
+            User? referrer = null;
+            if (!string.IsNullOrWhiteSpace(request.ReferralCode))
+            {
+                var normalizedCode = request.ReferralCode.Trim().ToUpperInvariant();
+                referrer = await _mongoDb.Users
+                    .Find(u => u.ReferralCode == normalizedCode && !u.IsDeleted && u.IsActive)
+                    .FirstOrDefaultAsync();
+
+                if (referrer == null)
+                    return (false, "Invalid referral code. Please check the code or leave it blank.");
+
+                if (referrer.Email.Equals(normalizedEmail, StringComparison.OrdinalIgnoreCase))
+                    return (false, "You cannot use your own referral code.");
+            }
+
             if (existingUser != null && !existingUser.IsEmailVerified)
             {
+                var referralCode = string.IsNullOrWhiteSpace(existingUser.ReferralCode)
+                    ? await GenerateUniqueReferralCodeAsync()
+                    : existingUser.ReferralCode;
+
                 var update = Builders<User>.Update
                     .Set(u => u.Email, normalizedEmail)
                     .Set(u => u.Otp, generatedOtp)
@@ -65,13 +98,17 @@ namespace AuthService.Services
                     .Set(u => u.FullName, request.FullName)
                     .Set(u => u.Role, request.Role)
                     .Set(u => u.Phone, request.Phone)
-                    .Set(u => u.IsApproved, isApproved);
+                    .Set(u => u.IsApproved, isApproved)
+                    .Set(u => u.ReferralCode, referralCode)
+                    .Set(u => u.ReferredByUserId, referrer?.UserId)
+                    .Set(u => u.ReferredByCode, referrer?.ReferralCode);
 
                 await _mongoDb.Users.UpdateOneAsync(u => u.UserId == existingUser.UserId, update);
             }
             else
             {
                 string uniqueNineDigitId = await GenerateUniqueNineDigitUserIdAsync();
+                string referralCode = await GenerateUniqueReferralCodeAsync();
 
                 var user = new User
                 {
@@ -89,6 +126,9 @@ namespace AuthService.Services
                     Otp = generatedOtp,
                     OtpExpiry = expiryTime,
                     OtpAttemptCount = 0,
+                    ReferralCode = referralCode,
+                    ReferredByUserId = referrer?.UserId,
+                    ReferredByCode = referrer?.ReferralCode,
                     Sessions = new List<ActiveSession>()
                 };
                 await _mongoDb.Users.InsertOneAsync(user);
@@ -157,11 +197,15 @@ namespace AuthService.Services
                 updates.Add(Builders<User>.Update.Set(u => u.PendingEmail, null));
             }
             user.IsEmailVerified = true;
+            user.ReferralCode = await EnsureReferralCodeAsync(user);
 
             // Enforce approval/active/MFA status BEFORE issuing session or JWT
             if (!user.IsApproved || !user.IsActive || user.MfaEnabled)
             {
                 await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, Builders<User>.Update.Combine(updates));
+                if (!isPendingEmailChange && user.IsActive)
+                    await TryAwardSignupReferralAsync(user);
+
                 if (_auditService != null)
                     await _auditService.LogAuditAsync(user.UserId, "EmailVerified", isPendingEmailChange ? "Pending email verified." : "Email verified; login deferred until approved/active.");
 
@@ -179,6 +223,9 @@ namespace AuthService.Services
             updates.Add(Builders<User>.Update.Set(u => u.Sessions, activeSessions));
 
             await _mongoDb.Users.UpdateOneAsync(u => u.UserId == user.UserId, Builders<User>.Update.Combine(updates));
+
+            if (!isPendingEmailChange)
+                await TryAwardSignupReferralAsync(user);
 
             if (_auditService != null)
                 await _auditService.LogAuditAsync(user.UserId, "EmailVerified", "Email verified and session created.");
@@ -225,6 +272,8 @@ namespace AuthService.Services
             {
                 return (false, "MFA_REQUIRED", string.Empty, string.Empty, ToUserDto(user));
             }
+
+            user.ReferralCode = await EnsureReferralCodeAsync(user);
 
             var newSession = CreateSession();
             var activeSessions = CleanupExpiredSessions(user.Sessions);
@@ -411,7 +460,9 @@ namespace AuthService.Services
         public async Task<UserDto?> GetUserByIdAsync(string userId)
         {
             var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
-            return user != null ? ToUserDto(user) : null;
+            if (user == null) return null;
+            user.ReferralCode = await EnsureReferralCodeAsync(user);
+            return ToUserDto(user);
         }
 
         public async Task<List<UserDto>> GetAllUsersAsync()
@@ -1108,6 +1159,196 @@ namespace AuthService.Services
             throw new InvalidOperationException("Unable to allocate unique 9-digit UserId.");
         }
 
+        private async Task<string> GenerateUniqueReferralCodeAsync()
+        {
+            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            var chars = new char[9];
+            chars[0] = 'E';
+            chars[1] = 'X';
+            chars[2] = 'M';
+
+            for (int attempt = 0; attempt < 25; attempt++)
+            {
+                for (int i = 3; i < chars.Length; i++)
+                {
+                    chars[i] = alphabet[RandomNumberGenerator.GetInt32(alphabet.Length)];
+                }
+
+                var code = new string(chars);
+                var exists = await _mongoDb.Users.Find(u => u.ReferralCode == code).AnyAsync();
+                if (!exists) return code;
+            }
+
+            return $"EXM{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+        }
+
+        public async Task<string> EnsureReferralCodeAsync(User user)
+        {
+            if (!string.IsNullOrWhiteSpace(user.ReferralCode))
+                return user.ReferralCode;
+
+            var generated = await GenerateUniqueReferralCodeAsync();
+            var filter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(u => u.UserId, user.UserId),
+                Builders<User>.Filter.Or(
+                    Builders<User>.Filter.Eq(u => u.ReferralCode, null),
+                    Builders<User>.Filter.Eq(u => u.ReferralCode, string.Empty)
+                )
+            );
+            var update = Builders<User>.Update.Set(u => u.ReferralCode, generated);
+            var updated = await _mongoDb.Users.FindOneAndUpdateAsync(
+                filter,
+                update,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
+
+            if (updated != null && !string.IsNullOrWhiteSpace(updated.ReferralCode))
+                return updated.ReferralCode;
+
+            var latest = await _mongoDb.Users.Find(u => u.UserId == user.UserId).FirstOrDefaultAsync();
+            return !string.IsNullOrWhiteSpace(latest?.ReferralCode) ? latest.ReferralCode! : generated;
+        }
+
+        public async Task<string> EnsureUserReferralCodeAsync(string userId)
+        {
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            if (user == null) return string.Empty;
+            return await EnsureReferralCodeAsync(user);
+        }
+
+        public async Task<(string ReferralCode, bool CanApplyReferralCode, string? ReferredByCode, bool ReferralRewarded)> GetUserReferralStatusAsync(string userId)
+        {
+            var user = await _mongoDb.Users.Find(u => u.UserId == userId && !u.IsDeleted).FirstOrDefaultAsync();
+            if (user == null)
+                return (string.Empty, false, null, false);
+
+            var code = await EnsureReferralCodeAsync(user);
+            bool canApply = !user.ReferralRewarded && string.IsNullOrWhiteSpace(user.ReferredByUserId);
+            return (code, canApply, user.ReferredByCode, user.ReferralRewarded);
+        }
+
+        public async Task<(bool Success, string Message, string? AppliedCode)> ApplyReferralCodeAsync(string currentUserId, string referralCode)
+        {
+            var normalizedCode = (referralCode ?? string.Empty).Trim().ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedCode))
+                return (false, "Referral code is required.", null);
+
+            var user = await _mongoDb.Users.Find(u => u.UserId == currentUserId && !u.IsDeleted).FirstOrDefaultAsync();
+            if (user == null) return (false, "User account not found.", null);
+            if (!user.IsActive) return (false, "Account is deactivated.", null);
+            if (!user.IsEmailVerified) return (false, "Please verify your email before applying a referral code.", null);
+            if (user.ReferralRewarded || !string.IsNullOrWhiteSpace(user.ReferredByUserId))
+                return (false, "A referral code has already been applied to your account.", null);
+
+            var referrer = await _mongoDb.Users
+                .Find(u => u.ReferralCode == normalizedCode && !u.IsDeleted && u.IsActive)
+                .FirstOrDefaultAsync();
+            if (referrer == null)
+                return (false, "Invalid referral code. Please check and try again.", null);
+
+            if (referrer.UserId == user.UserId)
+                return (false, "You cannot apply your own referral code.", null);
+
+            if (string.Equals(referrer.ReferredByUserId, user.UserId, StringComparison.Ordinal))
+                return (false, "Circular referral between two accounts is not permitted.", null);
+
+            var claimFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(u => u.UserId, user.UserId),
+                Builders<User>.Filter.Eq(u => u.ReferralRewarded, false),
+                Builders<User>.Filter.Or(
+                    Builders<User>.Filter.Eq(u => u.ReferredByUserId, null),
+                    Builders<User>.Filter.Eq(u => u.ReferredByUserId, string.Empty)
+                )
+            );
+            var claimUpdate = Builders<User>.Update
+                .Set(u => u.ReferredByUserId, referrer.UserId)
+                .Set(u => u.ReferredByCode, referrer.ReferralCode)
+                .Set(u => u.ReferralRewarded, true)
+                .Set(u => u.ReferralRewardedAt, DateTime.UtcNow);
+
+            var claimed = await _mongoDb.Users.FindOneAndUpdateAsync(claimFilter, claimUpdate);
+            if (claimed == null)
+                return (false, "A referral code has already been applied to your account.", null);
+
+            if (_referralRewardHandler != null)
+            {
+                var (ok, msg) = await _referralRewardHandler.CreditReferralPairAsync(
+                    referrer.UserId,
+                    referrer.FullName,
+                    user.UserId,
+                    user.FullName,
+                    user.Email,
+                    referrer.ReferralCode ?? normalizedCode);
+
+                if (!ok)
+                {
+                    await _mongoDb.Users.UpdateOneAsync(
+                        u => u.UserId == user.UserId,
+                        Builders<User>.Update
+                            .Set(u => u.ReferredByUserId, null)
+                            .Set(u => u.ReferredByCode, null)
+                            .Set(u => u.ReferralRewarded, false)
+                            .Set(u => u.ReferralRewardedAt, null));
+                    return (false, msg, null);
+                }
+            }
+
+            if (_auditService != null)
+                await _auditService.LogAuditAsync(user.UserId, "ReferralApplied", $"Applied referral code {referrer.ReferralCode} from user {referrer.UserId}.");
+
+            return (true, "Referral code applied! 100 coins have been added to both your wallet and your friend's wallet.", referrer.ReferralCode);
+        }
+
+        private async Task TryAwardSignupReferralAsync(User user)
+        {
+            if (_referralRewardHandler == null ||
+                string.IsNullOrWhiteSpace(user.ReferredByUserId) ||
+                user.ReferralRewarded ||
+                user.ReferredByUserId == user.UserId)
+            {
+                return;
+            }
+
+            var referrer = await _mongoDb.Users
+                .Find(u => u.UserId == user.ReferredByUserId && !u.IsDeleted && u.IsActive)
+                .FirstOrDefaultAsync();
+            if (referrer == null || referrer.ReferredByUserId == user.UserId)
+                return;
+
+            var claimFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(u => u.UserId, user.UserId),
+                Builders<User>.Filter.Eq(u => u.IsEmailVerified, true),
+                Builders<User>.Filter.Eq(u => u.ReferralRewarded, false)
+            );
+            var claimUpdate = Builders<User>.Update
+                .Set(u => u.ReferralRewarded, true)
+                .Set(u => u.ReferralRewardedAt, DateTime.UtcNow);
+
+            var claimed = await _mongoDb.Users.FindOneAndUpdateAsync(claimFilter, claimUpdate);
+            if (claimed == null) return;
+
+            var (ok, _) = await _referralRewardHandler.CreditReferralPairAsync(
+                referrer.UserId,
+                referrer.FullName,
+                user.UserId,
+                user.FullName,
+                user.Email,
+                user.ReferredByCode ?? referrer.ReferralCode ?? string.Empty);
+
+            if (!ok)
+            {
+                await _mongoDb.Users.UpdateOneAsync(
+                    u => u.UserId == user.UserId,
+                    Builders<User>.Update
+                        .Set(u => u.ReferralRewarded, false)
+                        .Set(u => u.ReferralRewardedAt, null));
+                return;
+            }
+
+            user.ReferralRewarded = true;
+            if (_auditService != null)
+                await _auditService.LogAuditAsync(user.UserId, "ReferralRewardGranted", $"Dual 100-coin referral bonus granted with referrer {referrer.UserId}.");
+        }
+
         private List<ActiveSession> CleanupExpiredSessions(List<ActiveSession>? sessions)
         {
             if (sessions == null) return new List<ActiveSession>();
@@ -1161,7 +1402,10 @@ namespace AuthService.Services
                 LastLoginAt = user.LastLoginAt,
                 ProfilePicture = user.ProfilePicture,
                 IsEmailVerified = user.IsEmailVerified,
-                MfaEnabled = user.MfaEnabled
+                MfaEnabled = user.MfaEnabled,
+                ReferralCode = user.ReferralCode,
+                ReferredByCode = user.ReferredByCode,
+                ReferralRewarded = user.ReferralRewarded
             };
         }
     }

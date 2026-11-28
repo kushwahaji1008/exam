@@ -48,6 +48,14 @@ namespace ExamService.Models
         public int TotalMarks { get; set; }
         public int PassingMarks { get; set; }
 
+        [Range(0, 1000000)]
+        public decimal Price { get; set; } = 0m;
+        [Range(0, 1000000)]
+        public decimal DiscountPrice { get; set; } = 0m;
+
+        public decimal GetEffectivePrice() =>
+            DiscountPrice > 0 && DiscountPrice < Price ? DiscountPrice : Price;
+
         // Access Management
         public List<string> AllowedStudents { get; set; } = new(); // Empty = Public/All
         public List<string> BlockedStudents { get; set; } = new(); // Explicitly banned
@@ -139,6 +147,10 @@ namespace ExamService.Models
 
         public int TotalMarks { get; set; }
         public int PassingMarks { get; set; }
+        [Range(0, 1000000)]
+        public decimal Price { get; set; } = 0m;
+        [Range(0, 1000000)]
+        public decimal DiscountPrice { get; set; } = 0m;
 
         public List<string> AllowedStudents { get; set; } = new();
         public string? InstructionsHtml { get; set; }
@@ -200,6 +212,8 @@ namespace ExamService.Models
         public int SectionCount { get; set; }
         public int TotalMarks { get; set; }
         public int PassingMarks { get; set; }
+        public decimal Price { get; set; }
+        public decimal DiscountPrice { get; set; }
         public ExamSettings Settings { get; set; } = new();
         public ExamGrading Grading { get; set; } = new();
     }
@@ -302,6 +316,10 @@ namespace ExamService.Models
         public ExamType Type { get; set; } = ExamType.MCQ;
         public ExamStatus Status { get; set; } = ExamStatus.Draft;
         public int? PassingMarks { get; set; }
+        [Range(0, 1000000)]
+        public decimal Price { get; set; } = 0m;
+        [Range(0, 1000000)]
+        public decimal DiscountPrice { get; set; } = 0m;
         public ExamSettings Settings { get; set; } = new();
         public ExamGrading Grading { get; set; } = new();
         public string? InstructionsHtml { get; set; }

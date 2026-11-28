@@ -31,4 +31,40 @@ namespace EnrollmentService.Models
         public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
         public DateTime? ValidUntil { get; set; }
     }
+
+    [BsonIgnoreExtraElements]
+    public class ExamEnrollment
+    {
+        [BsonId]
+        [BsonRepresentation(BsonType.String)]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+
+        public string EnrollmentId { get; set; } = $"EXR-{RandomNumberGenerator.GetInt32(10_000_000, 100_000_000)}";
+        public string UserId { get; set; } = string.Empty;
+        public string ExamId { get; set; } = string.Empty;
+
+        public decimal CoinsPaid { get; set; }
+        public string WalletTransactionId { get; set; } = string.Empty;
+
+        public EnrollmentStatus Status { get; set; } = EnrollmentStatus.Active;
+        public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
+    }
+
+    [BsonIgnoreExtraElements]
+    public class ExamSeriesEnrollment
+    {
+        [BsonId]
+        [BsonRepresentation(BsonType.String)]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+
+        public string EnrollmentId { get; set; } = $"ESR-{RandomNumberGenerator.GetInt32(10_000_000, 100_000_000)}";
+        public string UserId { get; set; } = string.Empty;
+        public string SeriesId { get; set; } = string.Empty;
+
+        public decimal CoinsPaid { get; set; }
+        public string WalletTransactionId { get; set; } = string.Empty;
+
+        public EnrollmentStatus Status { get; set; } = EnrollmentStatus.Active;
+        public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
+    }
 }

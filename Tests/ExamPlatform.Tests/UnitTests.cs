@@ -1,6 +1,8 @@
 using System.Text;
 using AnalyticsService.Services;
 using AuthService.Services;
+using EnrollmentService.Services;
+using ExamService.Models;
 using Microsoft.Extensions.Configuration;
 using ProctoringService.Models;
 using ProctoringService.Services;
@@ -8,6 +10,7 @@ using QuestionBankService.Services;
 using ResultService.Models;
 using ResultService.Services;
 using StorageService.Services;
+using WalletService.Services;
 
 namespace ExamPlatform.Tests;
 
@@ -237,5 +240,23 @@ public class UnitTests
         Assert.Contains(records.Skip(1), r => r[0] == "Section A - Core Concepts" && r[2] == "MultipleCorrect");
         Assert.Contains(records.Skip(1), r => r[0] == "Section B - Aptitude & Code" && r[2] == "TrueFalse");
         Assert.Contains(records.Skip(1), r => r[0] == "Section B - Aptitude & Code" && r[2] == "CodeEvaluation");
+    }
+
+    [Fact]
+    public void WalletAndPricing_ReferralRewardIs100_AndEffectivePriceHonorsValidDiscounts()
+    {
+        Assert.Equal(100m, WalletManager.ReferralRewardCoins);
+
+        var freeExam = new Exam { Price = 0m, DiscountPrice = 0m };
+        Assert.Equal(0m, freeExam.GetEffectivePrice());
+
+        var discountedExam = new Exam { Price = 150m, DiscountPrice = 90m };
+        Assert.Equal(90m, discountedExam.GetEffectivePrice());
+
+        var invalidHigherDiscount = new Exam { Price = 80m, DiscountPrice = 120m };
+        Assert.Equal(80m, invalidHigherDiscount.GetEffectivePrice());
+
+        var seriesInfo = new PurchaseableSeriesInfo { Price = 200m, DiscountPrice = 140m };
+        Assert.Equal(140m, seriesInfo.EffectivePrice);
     }
 }

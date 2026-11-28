@@ -37,9 +37,18 @@ namespace WalletService.Services
             await TryCreateIndexAsync(WalletTransactions, new CreateIndexModel<WalletTransaction>(
                 Builders<WalletTransaction>.IndexKeys.Ascending(t => t.UserId).Descending(t => t.Timestamp),
                 new CreateIndexOptions { Name = "idx_wallet_txns_user_ts" }));
+
+            await TryCreateIndexAsync(Referrals, new CreateIndexModel<ReferralRecord>(
+                Builders<ReferralRecord>.IndexKeys.Ascending(r => r.ReferredUserId),
+                new CreateIndexOptions { Unique = true, Name = "idx_referrals_referred_unique" }));
+
+            await TryCreateIndexAsync(Referrals, new CreateIndexModel<ReferralRecord>(
+                Builders<ReferralRecord>.IndexKeys.Ascending(r => r.ReferrerUserId).Descending(r => r.CreatedAt),
+                new CreateIndexOptions { Name = "idx_referrals_referrer" }));
         }
 
         public IMongoCollection<Wallet> Wallets => _database.GetCollection<Wallet>("wallets");
         public IMongoCollection<WalletTransaction> WalletTransactions => _database.GetCollection<WalletTransaction>("wallet_transactions");
+        public IMongoCollection<ReferralRecord> Referrals => _database.GetCollection<ReferralRecord>("referrals");
     }
 }

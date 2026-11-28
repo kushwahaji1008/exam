@@ -33,8 +33,18 @@ namespace EnrollmentService.Services
             await TryCreateIndexAsync(Enrollments, new CreateIndexModel<Enrollment>(
                 Builders<Enrollment>.IndexKeys.Ascending(e => e.CourseId).Ascending(e => e.Status),
                 new CreateIndexOptions { Name = "idx_enrollments_course_status" }));
+
+            await TryCreateIndexAsync(ExamEnrollments, new CreateIndexModel<ExamEnrollment>(
+                Builders<ExamEnrollment>.IndexKeys.Ascending(e => e.UserId).Ascending(e => e.ExamId),
+                new CreateIndexOptions { Name = "idx_exam_enrollments_user_exam" }));
+
+            await TryCreateIndexAsync(ExamSeriesEnrollments, new CreateIndexModel<ExamSeriesEnrollment>(
+                Builders<ExamSeriesEnrollment>.IndexKeys.Ascending(e => e.UserId).Ascending(e => e.SeriesId),
+                new CreateIndexOptions { Name = "idx_series_enrollments_user_series" }));
         }
 
         public IMongoCollection<Enrollment> Enrollments => _database.GetCollection<Enrollment>("enrollments");
+        public IMongoCollection<ExamEnrollment> ExamEnrollments => _database.GetCollection<ExamEnrollment>("exam_enrollments");
+        public IMongoCollection<ExamSeriesEnrollment> ExamSeriesEnrollments => _database.GetCollection<ExamSeriesEnrollment>("exam_series_enrollments");
     }
 }

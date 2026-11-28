@@ -90,6 +90,8 @@ namespace ExamService.Services
                 Grading = request.Grading ?? new ExamGrading(),
                 TotalMarks = request.TotalMarks,
                 PassingMarks = request.PassingMarks,
+                Price = Math.Max(0m, request.Price),
+                DiscountPrice = Math.Max(0m, request.DiscountPrice),
                 AllowedStudents = request.AllowedStudents ?? new List<string>(),
                 InstructionsHtml = request.InstructionsHtml,
                 CreatedBy = userId,
@@ -280,6 +282,8 @@ namespace ExamService.Services
                 Grading = request.Grading ?? new ExamGrading(),
                 TotalMarks = totalMarks,
                 PassingMarks = Math.Min(passingMarks, totalMarks),
+                Price = Math.Max(0m, request.Price),
+                DiscountPrice = Math.Max(0m, request.DiscountPrice),
                 InstructionsHtml = request.InstructionsHtml,
                 CreatedBy = createdBy,
                 CreatedAt = DateTime.UtcNow,
@@ -327,6 +331,12 @@ namespace ExamService.Services
                             break;
                         case "passingmarks" when v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var pm) && pm >= 0:
                             updates.Add(Builders<Exam>.Update.Set(e => e.PassingMarks, pm));
+                            break;
+                        case "price" when v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var pr) && pr >= 0:
+                            updates.Add(Builders<Exam>.Update.Set(e => e.Price, pr));
+                            break;
+                        case "discountprice" when v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var dp) && dp >= 0:
+                            updates.Add(Builders<Exam>.Update.Set(e => e.DiscountPrice, dp));
                             break;
                         case "instructionshtml":
                             updates.Add(Builders<Exam>.Update.Set(e => e.InstructionsHtml, v.ValueKind == JsonValueKind.Null ? null : v.GetString()));
@@ -799,6 +809,8 @@ namespace ExamService.Services
                 SectionCount = exam.Sections.Count,
                 TotalMarks = exam.TotalMarks,
                 PassingMarks = exam.PassingMarks,
+                Price = exam.Price,
+                DiscountPrice = exam.DiscountPrice,
                 Settings = exam.Settings,
                 Grading = exam.Grading
             };

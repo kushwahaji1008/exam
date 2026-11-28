@@ -3,15 +3,26 @@ using VideoClassesService.Models;
 
 namespace VideoClassesService.Services
 {
+    public interface IVideoCoursePaymentHandler
+    {
+        Task<(bool Success, string Message)> DebitForVideoCourseAsync(
+            string userId, string courseId, string courseTitle, decimal price);
+    }
+
     public class ProgressTrackingService
     {
         private readonly MongoDbService _mongoDb;
         private readonly ILogger<ProgressTrackingService> _logger;
+        private readonly IVideoCoursePaymentHandler? _paymentHandler;
 
-        public ProgressTrackingService(MongoDbService mongoDb, ILogger<ProgressTrackingService> logger)
+        public ProgressTrackingService(
+            MongoDbService mongoDb,
+            ILogger<ProgressTrackingService> logger,
+            IVideoCoursePaymentHandler? paymentHandler = null)
         {
             _mongoDb = mongoDb;
             _logger = logger;
+            _paymentHandler = paymentHandler;
         }
 
         private async Task<int> CountCourseLessonsAsync(string courseId)
@@ -33,6 +44,15 @@ namespace VideoClassesService.Services
             if (existing != null)
             {
                 return existing;
+            }
+
+            var course = await _mongoDb.Courses.Find(c => c.Id == courseId).FirstOrDefaultAsync();
+            if (course != null && !course.IsFree && course.Price.HasValue && course.Price.Value > 0 && _paymentHandler != null)
+            {
+                var (paid, payMessage) = await _paymentHandler.DebitForVideoCourseAsync(
+                    studentId, courseId, course.Title, course.Price.Value);
+                if (!paid)
+                    throw new InvalidOperationException(payMessage);
             }
 
             int totalLessons = await CountCourseLessonsAsync(courseId);

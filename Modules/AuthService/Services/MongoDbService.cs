@@ -43,6 +43,10 @@ namespace AuthService.Services
                 Builders<User>.IndexKeys.Ascending(u => u.Phone),
                 new CreateIndexOptions { Sparse = true, Name = "idx_users_phone" }));
 
+            await TryCreateIndexAsync(Users, new CreateIndexModel<User>(
+                Builders<User>.IndexKeys.Ascending(u => u.ReferralCode),
+                new CreateIndexOptions { Unique = true, Sparse = true, Name = "idx_users_referralCode" }));
+
             await TryCreateIndexAsync(Roles, new CreateIndexModel<Role>(
                 Builders<Role>.IndexKeys.Ascending(r => r.Name),
                 new CreateIndexOptions { Name = "idx_roles_name" }));
