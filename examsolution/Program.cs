@@ -17,7 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 // CORS CONFIGURATION
 // ==========================================
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:3000", "http://exam.rnsoft.com", "https://exam-solution-pi.vercel.app" }; // Default allowed origins
+    ?? new[] { "http://localhost:3000", "http://exam.rnsoft.in", "https://exam-solution-pi.vercel.app" }; // Default allowed origins
 
 builder.Services.AddCors(options =>
 {
