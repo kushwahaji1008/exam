@@ -221,6 +221,7 @@ builder.Services.AddScoped<AuthService.Services.AuditService>();
 builder.Services.AddSingleton<ExamService.Services.MongoDbService>();
 builder.Services.AddScoped<ExamService.Services.IExamAnalyticsProvider, ExamAnalyticsProviderAdapter>();
 builder.Services.AddScoped<ExamService.Controllers.V1.IExamQuestionDetailResolver, ExamQuestionDetailResolver>();
+builder.Services.AddScoped<ExamService.Services.IExamQuestionAutomation, ExamQuestionAutomationAdapter>();
 builder.Services.AddScoped<ExamService.Services.ExamManagementService>();
 builder.Services.AddScoped<ExamService.Services.ExamSeriesManagementService>();
 
@@ -277,13 +278,23 @@ builder.Services.AddSingleton<WalletService.Services.MongoDbService>();
 builder.Services.AddScoped<WalletService.Services.WalletManager>();
 
 // --- StorageService ---
+builder.Services.AddSingleton<StorageService.Services.MediaTicketService>();
 builder.Services.AddSingleton<StorageService.Services.LocalStorageService>();
 builder.Services.AddScoped<StorageService.Services.GoogleDriveStorageService>();
 builder.Services.AddScoped<StorageService.Services.IStorageService, StorageService.Services.SmartStorageService>();
+builder.Services.AddScoped<CourseService.Services.ICourseMediaSigner, PlatformMediaSignerAdapter>();
+builder.Services.AddScoped<VideoClassesService.Services.IVideoMediaSigner, PlatformMediaSignerAdapter>();
 
 var app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
+
+app.Use(async (context, next) =>
+{
+    Console.WriteLine($"[API HIT] {DateTime.Now:HH:mm:ss} {context.Request.Method} {context.Request.Path}");
+    await next();
+    Console.WriteLine($"[API DONE] Status: {context.Response.StatusCode}");
+});
 
 app.Use(async (context, next) =>
 {

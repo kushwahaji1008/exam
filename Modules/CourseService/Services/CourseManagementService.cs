@@ -13,6 +13,12 @@ namespace CourseService.Services
         Task<List<string>> GetEnrolledCourseIdsAsync(string userId);
     }
 
+    public interface ICourseMediaSigner
+    {
+        string SignMediaUrl(string rawUrl, string userId);
+        bool IsLocalPlatformMedia(string rawUrl);
+    }
+
     public class CourseManagementService
     {
         private readonly MongoDbService _mongoDb;

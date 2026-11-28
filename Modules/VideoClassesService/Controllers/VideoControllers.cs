@@ -151,15 +151,18 @@ namespace VideoClassesService.Controllers
         private readonly CourseManagementService _courseService;
         private readonly ProgressTrackingService _progressService;
         private readonly CommentService _commentService;
+        private readonly IVideoMediaSigner? _mediaSigner;
 
         public LessonsController(
             CourseManagementService courseService,
             ProgressTrackingService progressService,
-            CommentService commentService)
+            CommentService commentService,
+            IVideoMediaSigner? mediaSigner = null)
         {
             _courseService = courseService;
             _progressService = progressService;
             _commentService = commentService;
+            _mediaSigner = mediaSigner;
         }
 
         [HttpPost]
@@ -171,13 +174,87 @@ namespace VideoClassesService.Controllers
         }
 
         [HttpGet("{lessonId}")]
+        [Authorize]
         public async Task<IActionResult> GetLesson(string lessonId)
         {
-            var lesson = await _courseService.GetLessonByIdAsync(lessonId);
+            var (authorized, lesson, _, denyMessage) = await AuthorizeLessonAccessAsync(lessonId);
             if (lesson == null) return NotFound(new { message = "Lesson not found" });
+            if (!authorized)
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = denyMessage });
 
             await _courseService.IncrementViewCountAsync(lessonId);
+
+            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(lesson.VideoUrl) && _mediaSigner != null)
+                lesson.VideoUrl = _mediaSigner.SignMediaUrl(lesson.VideoUrl, userId);
+            if (!string.IsNullOrWhiteSpace(lesson.RecordingUrl) && _mediaSigner != null)
+                lesson.RecordingUrl = _mediaSigner.SignMediaUrl(lesson.RecordingUrl, userId);
+
             return Ok(lesson);
+        }
+
+        [HttpPost("{lessonId}/media-access")]
+        [Authorize]
+        public async Task<IActionResult> GetLessonMediaAccess(string lessonId)
+        {
+            var (authorized, lesson, _, denyMessage) = await AuthorizeLessonAccessAsync(lessonId);
+            if (lesson == null) return NotFound(new { message = "Lesson not found" });
+            if (!authorized)
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = denyMessage });
+
+            var rawUrl = !string.IsNullOrWhiteSpace(lesson.VideoUrl)
+                ? lesson.VideoUrl
+                : lesson.RecordingUrl;
+
+            if (string.IsNullOrWhiteSpace(rawUrl))
+                return NotFound(new { message = "No video is attached to this lesson." });
+
+            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
+            bool isLocal = _mediaSigner?.IsLocalPlatformMedia(rawUrl)
+                ?? rawUrl.StartsWith("/api/v1/files/download/", StringComparison.OrdinalIgnoreCase);
+            string streamUrl = _mediaSigner != null
+                ? _mediaSigner.SignMediaUrl(rawUrl, userId)
+                : rawUrl;
+
+            var identityLabel = User.FindFirst(ClaimTypes.Email)?.Value
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? userId;
+
+            return Ok(new
+            {
+                streamUrl,
+                isLocalHosted = isLocal,
+                title = lesson.Title,
+                durationSeconds = lesson.DurationSeconds,
+                watermarkText = $"{identityLabel} · ID:{userId}",
+                expiresAt = DateTime.UtcNow.AddMinutes(15)
+            });
+        }
+
+        private async Task<(bool Authorized, Lesson? Lesson, Course? Course, string DenyMessage)> AuthorizeLessonAccessAsync(string lessonId)
+        {
+            var lesson = await _courseService.GetLessonByIdAsync(lessonId);
+            if (lesson == null) return (false, null, null, "Lesson not found.");
+
+            var chapter = await _courseService.GetChapterByIdAsync(lesson.ChapterId);
+            var course = chapter != null ? await _courseService.GetCourseByIdAsync(chapter.CourseId) : null;
+
+            var userId = User.FindFirst("userId")?.Value ?? string.Empty;
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+                           (course != null && course.InstructorId == userId);
+
+            if (isStaff || lesson.IsFree || (course != null && course.IsFree))
+                return (true, lesson, course, string.Empty);
+
+            if (course != null)
+            {
+                var progress = await _progressService.GetStudentProgressAsync(userId, course.Id);
+                if (progress != null)
+                    return (true, lesson, course, string.Empty);
+            }
+
+            return (false, lesson, course, "Please enroll in this video course to watch this lesson on the platform.");
         }
 
         [HttpPut("{lessonId}")]

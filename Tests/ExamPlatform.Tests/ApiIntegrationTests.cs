@@ -677,4 +677,622 @@ public class ApiIntegrationTests : IClassFixture<ExamApiFactory>
         var throttled = await rlClient.PostAsJsonAsync("/api/v1/auth/login", new { email = "nobody@example.com", password = "x" });
         Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
     }
+
+    [Fact]
+    public async Task QuestionBank_BulkCsvImport_TemplateValidationAndAutoGrading_Work()
+    {
+        var (_, teacherToken, _) = await SeedAndLoginUserAsync($"teach_csv_{Guid.NewGuid():N}@example.com", UserRole.Teacher);
+        var (studentId, studentToken, _) = await SeedAndLoginUserAsync($"stud_csv_{Guid.NewGuid():N}@example.com", UserRole.Student);
+
+        using var teacherClient = _factory.CreateClient();
+        teacherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", teacherToken);
+
+        using var studentClient = _factory.CreateClient();
+        studentClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", studentToken);
+
+        // 0. Swagger endpoint remains healthy with IFormFile CSV endpoint
+        var swaggerResp = await teacherClient.GetAsync("/swagger/v1/swagger.json");
+        swaggerResp.EnsureSuccessStatusCode();
+
+        // 1. Authorization: Student cannot download template or import CSV
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.GetAsync("/api/v1/questions/import/template")).StatusCode);
+        using (var forbiddenForm = new MultipartFormDataContent())
+        {
+            forbiddenForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("QuestionText\nQ1")), "file", "q.csv");
+            var forbiddenUpload = await studentClient.PostAsync("/api/v1/questions/import/csv", forbiddenForm);
+            Assert.Equal(HttpStatusCode.Forbidden, forbiddenUpload.StatusCode);
+        }
+
+        // 2. Teacher can download valid sample CSV template
+        var tplResp = await teacherClient.GetAsync("/api/v1/questions/import/template");
+        tplResp.EnsureSuccessStatusCode();
+        Assert.Contains("text/csv", tplResp.Content.Headers.ContentType?.ToString() ?? string.Empty);
+        var tplCsv = await tplResp.Content.ReadAsStringAsync();
+        Assert.Contains("QuestionText,Type,OptionA", tplCsv);
+
+        // 3. Security: reject non-.csv files and disguised binary files containing NUL bytes
+        using (var badExtForm = new MultipartFormDataContent())
+        {
+            badExtForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("QuestionText\nTest")), "file", "payload.txt");
+            Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsync("/api/v1/questions/import/csv", badExtForm)).StatusCode);
+        }
+        using (var binaryForm = new MultipartFormDataContent())
+        {
+            binaryForm.Add(new ByteArrayContent(new byte[] { 0x41, 0x00, 0x42, 0x43 }), "file", "evil.csv");
+            Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsync("/api/v1/questions/import/csv", binaryForm)).StatusCode);
+        }
+
+        var mixedCsv = string.Join("\n",
+            "QuestionText,Type,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,CorrectOptions,Marks,NegativeMarks,Difficulty,Category,Subject,Topic,Explanation",
+            "\"What is 2 + 2, reliably?\",MCQ,3,4,5,6,B,,2,0.5,Easy,Arithmetic,Elementary Math,Addition,Two plus two equals four",
+            "Select all prime numbers,MultipleCorrect,2,4,5,9,,A|C,4,0,Medium,Arithmetic,Number Theory,Primes,2 and 5 are prime",
+            "Earth orbits the Sun.,TrueFalse,,,,,True,,1,0,Easy,Astronomy,Planetary Science,Solar System,Simple astronomy fact",
+            "Invalid broken MCQ without options,MCQ,,,,,A,,2,0,Easy,Arithmetic,Elementary Math,Addition,Missing options row");
+
+        // 4. Dry-run validates and reports both valid rows and exact error row without persisting
+        using (var dryForm = new MultipartFormDataContent())
+        {
+            dryForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(mixedCsv)), "file", "questions.csv");
+            var dryResp = await teacherClient.PostAsync("/api/v1/questions/import/csv?dryRun=true&skipInvalidRows=true", dryForm);
+            dryResp.EnsureSuccessStatusCode();
+            var dryDoc = await dryResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.True(dryDoc.GetProperty("dryRun").GetBoolean());
+            Assert.Equal(4, dryDoc.GetProperty("totalRows").GetInt32());
+            Assert.Equal(3, dryDoc.GetProperty("importedCount").GetInt32());
+            Assert.Equal(1, dryDoc.GetProperty("failedCount").GetInt32());
+            Assert.Equal(5, dryDoc.GetProperty("errors")[0].GetProperty("rowNumber").GetInt32());
+        }
+
+        // Confirm dry-run wrote nothing to question bank
+        var beforeList = await teacherClient.GetFromJsonAsync<List<JsonElement>>("/api/v1/questions?search=relia");
+        Assert.Empty(beforeList!);
+
+        // 5. Strict mode (skipInvalidRows=false) rejects entire upload with 400 and row error payload
+        using (var strictForm = new MultipartFormDataContent())
+        {
+            strictForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(mixedCsv)), "file", "questions.csv");
+            var strictResp = await teacherClient.PostAsync("/api/v1/questions/import/csv?skipInvalidRows=false", strictForm);
+            Assert.Equal(HttpStatusCode.BadRequest, strictResp.StatusCode);
+            var strictDoc = await strictResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(0, strictDoc.GetProperty("importedCount").GetInt32());
+            Assert.Equal(1, strictDoc.GetProperty("failedCount").GetInt32());
+        }
+
+        // 6. Live partial upload with skipInvalidRows=true & defaultStatus=Published (4)
+        string mcqId, multiId, tfId;
+        using (var liveForm = new MultipartFormDataContent())
+        {
+            liveForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(mixedCsv)), "file", "questions.csv");
+            var liveResp = await teacherClient.PostAsync("/api/v1/questions/import/csv?skipInvalidRows=true&defaultStatus=4", liveForm);
+            liveResp.EnsureSuccessStatusCode();
+            var liveDoc = await liveResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.False(liveDoc.GetProperty("dryRun").GetBoolean());
+            Assert.Equal(3, liveDoc.GetProperty("importedCount").GetInt32());
+            Assert.Equal(1, liveDoc.GetProperty("failedCount").GetInt32());
+
+            var importedArr = liveDoc.GetProperty("questions");
+            mcqId = importedArr[0].GetProperty("id").GetString()!;
+            multiId = importedArr[1].GetProperty("id").GetString()!;
+            tfId = importedArr[2].GetProperty("id").GetString()!;
+            Assert.Equal(4, importedArr[0].GetProperty("status").GetInt32()); // Published
+            Assert.NotNull(importedArr[0].GetProperty("categoryId").GetString());
+            Assert.NotNull(importedArr[0].GetProperty("subjectId").GetString());
+            Assert.NotNull(importedArr[0].GetProperty("topicId").GetString());
+            Assert.Equal(0, importedArr[0].GetProperty("tags").GetArrayLength());
+        }
+
+        // Verify categories, subjects, and topics were auto-created hierarchically and filter cleanly
+        var categories = await teacherClient.GetFromJsonAsync<List<JsonElement>>("/api/v1/question-categories");
+        var arithmeticCat = categories!.First(c => c.GetProperty("name").GetString() == "Arithmetic");
+        var arithmeticCatId = arithmeticCat.GetProperty("id").GetString()!;
+        Assert.Contains(categories!, c => c.GetProperty("name").GetString() == "Astronomy");
+
+        var arithmeticSubjects = await teacherClient.GetFromJsonAsync<List<JsonElement>>($"/api/v1/subjects?categoryId={arithmeticCatId}");
+        Assert.Contains(arithmeticSubjects!, s => s.GetProperty("name").GetString() == "Elementary Math");
+        Assert.Contains(arithmeticSubjects!, s => s.GetProperty("name").GetString() == "Number Theory");
+        Assert.DoesNotContain(arithmeticSubjects!, s => s.GetProperty("name").GetString() == "Planetary Science");
+
+        var elemMathSubId = arithmeticSubjects!.First(s => s.GetProperty("name").GetString() == "Elementary Math").GetProperty("id").GetString()!;
+        var elemTopics = await teacherClient.GetFromJsonAsync<List<JsonElement>>($"/api/v1/topics?subjectId={elemMathSubId}");
+        Assert.Single(elemTopics!);
+        var additionTopicId = elemTopics![0].GetProperty("id").GetString()!;
+        Assert.Equal("Addition", elemTopics[0].GetProperty("name").GetString());
+
+        var filteredQuestions = await teacherClient.GetFromJsonAsync<List<JsonElement>>(
+            $"/api/v1/questions?categoryId={arithmeticCatId}&subjectId={elemMathSubId}&topicId={additionTopicId}");
+        Assert.Single(filteredQuestions!);
+        Assert.Equal(mcqId, filteredQuestions![0].GetProperty("id").GetString());
+
+        // 7. End-to-End compatibility check: create exam with CSV-imported questions and verify student attempt auto-grades to 100%
+        var mcqDetail = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/questions/{mcqId}");
+        var multiDetail = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/questions/{multiId}");
+        var tfDetail = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/questions/{tfId}");
+
+        var mcqOptBId = mcqDetail.GetProperty("options")[1].GetProperty("id").GetString()!;
+        Assert.Equal(mcqOptBId, mcqDetail.GetProperty("correctAnswer").GetString());
+
+        var multiOptAId = multiDetail.GetProperty("options")[0].GetProperty("id").GetString()!;
+        var multiOptCId = multiDetail.GetProperty("options")[2].GetProperty("id").GetString()!;
+        var tfOptTrueId = tfDetail.GetProperty("options")[0].GetProperty("id").GetString()!;
+
+        var examCreateResp = await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = "CSV Imported Question Exam",
+            durationMinutes = 30,
+            questionIds = new[] { mcqId, multiId, tfId }
+        });
+        examCreateResp.EnsureSuccessStatusCode();
+        var examId = (await examCreateResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exam").GetProperty("examId").GetString()!;
+        (await teacherClient.PostAsync($"/api/v1/exams/{examId}/activate", null)).EnsureSuccessStatusCode();
+
+        var attemptStart = await studentClient.PostAsJsonAsync("/api/v1/attempts", new { examId });
+        attemptStart.EnsureSuccessStatusCode();
+        var attemptId = (await attemptStart.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("attempt").GetProperty("id").GetString()!;
+
+        (await studentClient.PostAsJsonAsync($"/api/v1/attempts/{attemptId}/questions/{mcqId}/answer", new
+        {
+            selectedOption = mcqOptBId,
+            selectedOptions = new[] { mcqOptBId }
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsJsonAsync($"/api/v1/attempts/{attemptId}/questions/{multiId}/answer", new
+        {
+            selectedOptions = new[] { multiOptAId, multiOptCId }
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsJsonAsync($"/api/v1/attempts/{attemptId}/questions/{tfId}/answer", new
+        {
+            selectedOption = tfOptTrueId,
+            selectedOptions = new[] { tfOptTrueId }
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsync($"/api/v1/attempts/{attemptId}/submit", null)).EnsureSuccessStatusCode();
+
+        var resultDoc = await studentClient.GetFromJsonAsync<JsonElement>($"/api/v1/queries/attempts/{attemptId}/result");
+        Assert.Equal(7.0, resultDoc.GetProperty("totalScore").GetDouble()); // 2 + 4 + 1 = 7
+        Assert.Equal(7.0, resultDoc.GetProperty("maxScore").GetDouble());
+        Assert.Equal(100.0, resultDoc.GetProperty("percentage").GetDouble());
+        Assert.True(resultDoc.GetProperty("isPassed").GetBoolean());
+
+        // Prevent unused warning on studentId
+        Assert.False(string.IsNullOrEmpty(studentId));
+    }
+
+    [Fact]
+    public async Task ProtectedMedia_CoursePdfsAndVideos_OpenOnlyOnPlatform_WithSignedStreamingAndAccessChecks()
+    {
+        var (_, teacherToken, _) = await SeedAndLoginUserAsync($"teach_media_{Guid.NewGuid():N}@example.com", UserRole.Teacher);
+        var (studentId, studentToken, _) = await SeedAndLoginUserAsync($"stud_media_{Guid.NewGuid():N}@example.com", UserRole.Student);
+
+        using var anonClient = _factory.CreateClient();
+        using var teacherClient = _factory.CreateClient();
+        teacherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", teacherToken);
+
+        using var studentClient = _factory.CreateClient();
+        studentClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", studentToken);
+
+        // 1. Video upload signature check: reject HTML masquerading as MP4, reject Student upload
+        using (var fakeVideoForm = new MultipartFormDataContent())
+        {
+            fakeVideoForm.Add(new ByteArrayContent(Encoding.ASCII.GetBytes("<html>not a video</html>")), "file", "fake.mp4");
+            Assert.Equal(HttpStatusCode.BadRequest, (await teacherClient.PostAsync("/api/v1/files/upload-course-video", fakeVideoForm)).StatusCode);
+
+            Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsync("/api/v1/files/upload-course-video", fakeVideoForm)).StatusCode);
+        }
+
+        // 2. Upload valid PDF and valid MP4
+        var pdfBytes = Encoding.ASCII.GetBytes("%PDF-1.4\n%PlatformOnlyPdf\n%%EOF");
+        var mp4Bytes = new byte[] { 0x00, 0x00, 0x00, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'i', (byte)'s', (byte)'o', (byte)'m', 0x00, 0x00, 0x02, 0x00 };
+
+        string pdfUrl;
+        using (var pdfForm = new MultipartFormDataContent())
+        {
+            var c = new ByteArrayContent(pdfBytes);
+            c.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+            pdfForm.Add(c, "file", "notes.pdf");
+            var up = await teacherClient.PostAsync("/api/v1/files/upload-course-pdf", pdfForm);
+            up.EnsureSuccessStatusCode();
+            pdfUrl = (await up.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString()!;
+        }
+
+        string videoUrl;
+        using (var vidForm = new MultipartFormDataContent())
+        {
+            var c = new ByteArrayContent(mp4Bytes);
+            c.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+            vidForm.Add(c, "file", "lesson.mp4");
+            var up = await teacherClient.PostAsync("/api/v1/files/upload-course-video", vidForm);
+            up.EnsureSuccessStatusCode();
+            videoUrl = (await up.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString()!;
+            Assert.StartsWith("/api/v1/files/download/course-videos/", videoUrl);
+        }
+
+        // 3. Anonymous unauthenticated direct download of PDF or video is blocked (401)
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.GetAsync(pdfUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.GetAsync(videoUrl)).StatusCode);
+
+        // 4. Paid Course with Free Preview Video + Locked PDF redacts locked ContentUrl & blocks unenrolled access
+        var courseResp = await teacherClient.PostAsJsonAsync("/api/v1/courses", new
+        {
+            title = "Protected Media Course",
+            description = "PDF & Video lock test",
+            level = 0,
+            coursePrice = 50m
+        });
+        courseResp.EnsureSuccessStatusCode();
+        var courseId = (await courseResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("courseId").GetString()!;
+        (await teacherClient.PostAsync($"/api/v1/courses/{courseId}/publish", null)).EnsureSuccessStatusCode();
+
+        var secResp = await teacherClient.PostAsJsonAsync($"/api/v1/courses/{courseId}/sections", new { title = "Protected Module" });
+        secResp.EnsureSuccessStatusCode();
+        var secId = (await secResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sectionId").GetString()!;
+
+        var previewVidItemResp = await teacherClient.PostAsJsonAsync($"/api/v1/courses/{courseId}/sections/{secId}/items", new
+        {
+            title = "Preview Lecture",
+            type = 0,
+            contentUrl = videoUrl,
+            isFreePreview = true,
+            durationSeconds = 120
+        });
+        previewVidItemResp.EnsureSuccessStatusCode();
+        var previewVidItemId = (await previewVidItemResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("itemId").GetString()!;
+
+        var lockedPdfItemResp = await teacherClient.PostAsJsonAsync($"/api/v1/courses/{courseId}/sections/{secId}/items", new
+        {
+            title = "Locked Notes PDF",
+            type = 1,
+            contentUrl = pdfUrl,
+            isFreePreview = false,
+            durationSeconds = 0
+        });
+        lockedPdfItemResp.EnsureSuccessStatusCode();
+        var lockedPdfItemId = (await lockedPdfItemResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("itemId").GetString()!;
+
+        // Anonymous GET course redacts BOTH URLs
+        var anonCourse = await anonClient.GetFromJsonAsync<JsonElement>($"/api/v1/courses/{courseId}");
+        var anonItems = anonCourse.GetProperty("sections")[0].GetProperty("items");
+        Assert.Equal(string.Empty, anonItems[0].GetProperty("contentUrl").GetString());
+        Assert.Equal(string.Empty, anonItems[1].GetProperty("contentUrl").GetString());
+
+        // Unenrolled student sees preview URL, locked PDF URL is redacted & media-access is 403
+        var unenrolledCourse = await studentClient.GetFromJsonAsync<JsonElement>($"/api/v1/courses/{courseId}");
+        var unenrolledItems = unenrolledCourse.GetProperty("sections")[0].GetProperty("items");
+        Assert.Equal(videoUrl, unenrolledItems[0].GetProperty("contentUrl").GetString());
+        Assert.Equal(string.Empty, unenrolledItems[1].GetProperty("contentUrl").GetString());
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsync($"/api/v1/courses/{courseId}/items/{lockedPdfItemId}/media-access", null)).StatusCode);
+
+        // Free preview video media-access succeeds with signed ticket; direct tab Sec-Fetch-Dest: document is blocked (403)
+        var previewAccessResp = await studentClient.PostAsync($"/api/v1/courses/{courseId}/items/{previewVidItemId}/media-access", null);
+        previewAccessResp.EnsureSuccessStatusCode();
+        var signedVidUrl = (await previewAccessResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("streamUrl").GetString()!;
+        Assert.Contains("?ticket=", signedVidUrl);
+
+        using (var navReq = new HttpRequestMessage(HttpMethod.Get, signedVidUrl))
+        {
+            navReq.Headers.Add("Sec-Fetch-Dest", "document");
+            navReq.Headers.Add("Sec-Fetch-Mode", "navigate");
+            Assert.Equal(HttpStatusCode.Forbidden, (await anonClient.SendAsync(navReq)).StatusCode);
+        }
+
+        using (var videoStreamReq = new HttpRequestMessage(HttpMethod.Get, signedVidUrl))
+        {
+            videoStreamReq.Headers.Add("Sec-Fetch-Dest", "video");
+            videoStreamReq.Headers.Range = new RangeHeaderValue(0, 7);
+            var streamResp = await anonClient.SendAsync(videoStreamReq);
+            Assert.Equal(HttpStatusCode.PartialContent, streamResp.StatusCode);
+            Assert.Equal("inline", streamResp.Content.Headers.ContentDisposition?.DispositionType);
+            Assert.True(streamResp.Headers.CacheControl?.NoStore);
+        }
+
+        // Top up wallet, enroll, and unlock PDF media-access
+        using var internalClient = _factory.CreateClient();
+        internalClient.DefaultRequestHeaders.Add("X-Internal-Service-Key", ExamApiFactory.TestInternalKey);
+        (await internalClient.PostAsJsonAsync("/api/internal/wallet/credit", new
+        {
+            userId = studentId,
+            amount = 100m,
+            idempotencyKey = $"media_{Guid.NewGuid():N}",
+            referenceId = "MEDIA_TEST",
+            description = "Wallet topup"
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsJsonAsync("/api/v1/enrollment/buy", new { courseId })).EnsureSuccessStatusCode();
+
+        var pdfAccessResp = await studentClient.PostAsync($"/api/v1/courses/{courseId}/items/{lockedPdfItemId}/media-access", null);
+        pdfAccessResp.EnsureSuccessStatusCode();
+        var signedPdfUrl = (await pdfAccessResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("streamUrl").GetString()!;
+        Assert.Contains("?ticket=", signedPdfUrl);
+
+        var fetchedPdfBytes = await studentClient.GetByteArrayAsync(signedPdfUrl);
+        Assert.Equal(pdfBytes, fetchedPdfBytes);
+
+        // 5. VideoClassesService lesson authorization & media-access
+        var vcCreate = await teacherClient.PostAsJsonAsync("/api/v1/videos/courses", new
+        {
+            title = "Paid Video Course",
+            description = "Protected playback",
+            isFree = false
+        });
+        vcCreate.EnsureSuccessStatusCode();
+        var vcId = (await vcCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("course").GetProperty("id").GetString()!;
+
+        var chCreate = await teacherClient.PostAsJsonAsync($"/api/v1/videos/courses/{vcId}/chapters", new
+        {
+            courseId = vcId,
+            title = "Chapter 1"
+        });
+        chCreate.EnsureSuccessStatusCode();
+        var chId = (await chCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("chapter").GetProperty("id").GetString()!;
+
+        var lesCreate = await teacherClient.PostAsJsonAsync("/api/v1/videos/lessons", new
+        {
+            chapterId = chId,
+            title = "Protected MP4 Lesson",
+            videoUrl,
+            durationSeconds = 60,
+            isFree = false
+        });
+        lesCreate.EnsureSuccessStatusCode();
+        var lessonId = (await lesCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("lesson").GetProperty("id").GetString()!;
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.GetAsync($"/api/v1/videos/lessons/{lessonId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.GetAsync($"/api/v1/videos/lessons/{lessonId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsync($"/api/v1/videos/lessons/{lessonId}/media-access", null)).StatusCode);
+
+        (await studentClient.PostAsync($"/api/v1/videos/courses/{vcId}/enroll", null)).EnsureSuccessStatusCode();
+        var vcAccessResp = await studentClient.PostAsync($"/api/v1/videos/lessons/{lessonId}/media-access", null);
+        vcAccessResp.EnsureSuccessStatusCode();
+        var vcStreamUrl = (await vcAccessResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("streamUrl").GetString()!;
+        Assert.Contains("?ticket=", vcStreamUrl);
+    }
+
+    [Fact]
+    public async Task Exam_SectionWiseExclusiveCsvUpload_And_RandomAutoCreateBySubjectTopic_Work()
+    {
+        var (_, teacherToken, _) = await SeedAndLoginUserAsync($"teach_exauto_{Guid.NewGuid():N}@example.com", UserRole.Teacher);
+        var (_, studentToken, _) = await SeedAndLoginUserAsync($"stud_exauto_{Guid.NewGuid():N}@example.com", UserRole.Student);
+
+        using var teacherClient = _factory.CreateClient();
+        teacherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", teacherToken);
+
+        using var studentClient = _factory.CreateClient();
+        studentClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", studentToken);
+
+        // 1. Download section-wise exam CSV template & check RBAC on new exam endpoints
+        var tplResp = await teacherClient.GetAsync("/api/v1/exams/import-questions-template");
+        tplResp.EnsureSuccessStatusCode();
+        var tplCsv = (await tplResp.Content.ReadAsStringAsync()).TrimStart('\uFEFF');
+        Assert.StartsWith("Section,QuestionText,Type", tplCsv);
+
+        using (var studCsvForm = new MultipartFormDataContent())
+        {
+            studCsvForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(tplCsv)), "file", "template.csv");
+            Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsync("/api/v1/exams/import-questions-csv", studCsvForm)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsJsonAsync("/api/v1/exams/auto-generate-questions", new
+        {
+            rules = new[] { new { topic = "Optics", count = 1 } }
+        })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentClient.PostAsJsonAsync("/api/v1/exams/auto-create", new
+        {
+            title = "Student Forbidden Exam",
+            durationMinutes = 30,
+            rules = new[] { new { topic = "Optics", count = 1 } }
+        })).StatusCode);
+
+        // 2. Exam-only section-wise CSV upload (Dry Run then Live)
+        var uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
+        var secAText = $"ExamOnly Capital Q {uniqueSuffix}";
+        var secBText = $"ExamOnly Primes Q {uniqueSuffix}";
+        var examCsv = string.Join("\n",
+            "Section,QuestionText,Type,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,CorrectOptions,Marks,NegativeMarks,Difficulty,Explanation",
+            $"\"Section A - Core\",\"{secAText}\",\"MCQ\",\"Paris\",\"Berlin\",\"Rome\",\"Madrid\",\"A\",\"\",2,0,\"Easy\",\"Capital of France\"",
+            $"\"Section B - Logic\",\"{secBText}\",\"MultipleCorrect\",\"2\",\"4\",\"3\",\"6\",\"\",\"A|C\",4,0,\"Medium\",\"2 and 3 are prime\""
+        );
+
+        using (var dryForm = new MultipartFormDataContent())
+        {
+            dryForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(examCsv)), "file", "exam_sections.csv");
+            var dryResp = await teacherClient.PostAsync("/api/v1/exams/import-questions-csv?dryRun=true", dryForm);
+            dryResp.EnsureSuccessStatusCode();
+            var dryDoc = await dryResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.True(dryDoc.GetProperty("dryRun").GetBoolean());
+            Assert.Equal(2, dryDoc.GetProperty("totalRows").GetInt32());
+            Assert.Equal(2, dryDoc.GetProperty("importedCount").GetInt32());
+            Assert.Equal(0, dryDoc.GetProperty("failedCount").GetInt32());
+            Assert.Equal(2, dryDoc.GetProperty("sections").GetArrayLength());
+        }
+
+        string q1Id, q2Id, q1CorrectOptId, q2CorrectOptAId, q2CorrectOptCId;
+        using (var liveForm = new MultipartFormDataContent())
+        {
+            liveForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(examCsv)), "file", "exam_sections.csv");
+            var liveResp = await teacherClient.PostAsync("/api/v1/exams/import-questions-csv?skipInvalidRows=false", liveForm);
+            liveResp.EnsureSuccessStatusCode();
+            var liveDoc = await liveResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.False(liveDoc.GetProperty("dryRun").GetBoolean());
+            Assert.Equal(2, liveDoc.GetProperty("importedCount").GetInt32());
+
+            var sectionsArr = liveDoc.GetProperty("sections");
+            Assert.Equal(2, sectionsArr.GetArrayLength());
+
+            var sec0 = sectionsArr[0];
+            Assert.Equal("Section A - Core", sec0.GetProperty("sectionTitle").GetString());
+            Assert.Equal(1, sec0.GetProperty("questionCount").GetInt32());
+            Assert.Equal(2.0, sec0.GetProperty("totalMarks").GetDouble());
+            var sec0Q = sec0.GetProperty("questions")[0];
+            q1Id = sec0Q.GetProperty("id").GetString()!;
+            Assert.True(sec0Q.GetProperty("isExamExclusive").GetBoolean());
+            q1CorrectOptId = sec0Q.GetProperty("options")[0].GetProperty("id").GetString()!;
+
+            var sec1 = sectionsArr[1];
+            Assert.Equal("Section B - Logic", sec1.GetProperty("sectionTitle").GetString());
+            Assert.Equal(1, sec1.GetProperty("questionCount").GetInt32());
+            Assert.Equal(4.0, sec1.GetProperty("totalMarks").GetDouble());
+            var sec1Q = sec1.GetProperty("questions")[0];
+            q2Id = sec1Q.GetProperty("id").GetString()!;
+            Assert.True(sec1Q.GetProperty("isExamExclusive").GetBoolean());
+            q2CorrectOptAId = sec1Q.GetProperty("options")[0].GetProperty("id").GetString()!;
+            q2CorrectOptCId = sec1Q.GetProperty("options")[2].GetProperty("id").GetString()!;
+        }
+
+        // Create Exam using section structure only (no global questionIds) and verify isolation from Question Bank
+        var examCreateResp = await teacherClient.PostAsJsonAsync("/api/v1/exams", new
+        {
+            title = $"Exclusive CSV Sections Exam {uniqueSuffix}",
+            durationMinutes = 40,
+            questionIds = Array.Empty<string>(),
+            sections = new[]
+            {
+                new { title = "Section A - Core", description = "Part A", orderIndex = 0, questionIds = new[] { q1Id } },
+                new { title = "Section B - Logic", description = "Part B", orderIndex = 1, questionIds = new[] { q2Id } }
+            },
+            totalMarks = 6,
+            passingMarks = 3
+        });
+        examCreateResp.EnsureSuccessStatusCode();
+        var examDto = (await examCreateResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exam");
+        var examId = examDto.GetProperty("examId").GetString()!;
+        Assert.Equal(2, examDto.GetProperty("questionCount").GetInt32());
+        Assert.Equal(2, examDto.GetProperty("sectionCount").GetInt32());
+
+        (await teacherClient.PostAsync($"/api/v1/exams/{examId}/activate", null)).EnsureSuccessStatusCode();
+
+        // Exam questions endpoint returns both exclusive questions bound to examId
+        var examQsDoc = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/exams/{examId}/questions");
+        Assert.Equal(2, examQsDoc.GetProperty("questionIds").GetArrayLength());
+        var boundQs = examQsDoc.GetProperty("questions").EnumerateArray().ToList();
+        Assert.Equal(2, boundQs.Count);
+        Assert.All(boundQs, q =>
+        {
+            Assert.True(q.GetProperty("isExamExclusive").GetBoolean());
+            Assert.Equal(examId, q.GetProperty("exclusiveExamId").GetString());
+        });
+
+        // Shared Question Bank MUST NOT contain exam-exclusive CSV questions
+        var bankQuestions = await teacherClient.GetFromJsonAsync<List<JsonElement>>("/api/v1/questions");
+        Assert.DoesNotContain(bankQuestions!, q => q.GetProperty("id").GetString() == q1Id || q.GetProperty("id").GetString() == q2Id);
+        Assert.DoesNotContain(bankQuestions!, q => q.GetProperty("questionText").GetString() == secAText || q.GetProperty("questionText").GetString() == secBText);
+
+        // Student takes and passes the section-wise exclusive-question exam (100% auto-graded)
+        var startResp = await studentClient.PostAsJsonAsync("/api/v1/attempts", new { examId });
+        startResp.EnsureSuccessStatusCode();
+        var attemptId = (await startResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("attempt").GetProperty("id").GetString()!;
+
+        (await studentClient.PostAsJsonAsync($"/api/v1/attempts/{attemptId}/questions/{q1Id}/answer", new
+        {
+            selectedOption = q1CorrectOptId,
+            selectedOptions = new[] { q1CorrectOptId }
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsJsonAsync($"/api/v1/attempts/{attemptId}/questions/{q2Id}/answer", new
+        {
+            selectedOptions = new[] { q2CorrectOptAId, q2CorrectOptCId }
+        })).EnsureSuccessStatusCode();
+
+        (await studentClient.PostAsync($"/api/v1/attempts/{attemptId}/submit", null)).EnsureSuccessStatusCode();
+        var attemptResult = await studentClient.GetFromJsonAsync<JsonElement>($"/api/v1/queries/attempts/{attemptId}/result");
+        Assert.Equal(6.0, attemptResult.GetProperty("totalScore").GetDouble());
+        Assert.Equal(6.0, attemptResult.GetProperty("maxScore").GetDouble());
+        Assert.Equal(100.0, attemptResult.GetProperty("percentage").GetDouble());
+        Assert.True(attemptResult.GetProperty("isPassed").GetBoolean());
+
+        // 3. Seed Question Bank with Subject/Topic questions and verify Random Auto-Generation + Auto-Create Exam
+        var subName = $"Physics_{uniqueSuffix}";
+        var topicOptics = $"Optics_{uniqueSuffix}";
+        var topicThermo = $"Thermo_{uniqueSuffix}";
+        var bankCsv = string.Join("\n",
+            "QuestionText,Type,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,Marks,Difficulty,Category,Subject,Topic",
+            $"\"Optics Q1 {uniqueSuffix}\",\"MCQ\",\"Refraction\",\"Diffraction\",\"Reflection\",\"Dispersion\",\"A\",2,\"Easy\",\"Science\",\"{subName}\",\"{topicOptics}\"",
+            $"\"Optics Q2 {uniqueSuffix}\",\"MCQ\",\"Concave\",\"Convex\",\"Plane\",\"Cylindrical\",\"B\",2,\"Easy\",\"Science\",\"{subName}\",\"{topicOptics}\"",
+            $"\"Optics Q3 {uniqueSuffix}\",\"MCQ\",\"3e8\",\"3e6\",\"3e5\",\"3e4\",\"A\",2,\"Medium\",\"Science\",\"{subName}\",\"{topicOptics}\"",
+            $"\"Optics Q4 {uniqueSuffix}\",\"MCQ\",\"Virtual\",\"Real\",\"Inverted\",\"None\",\"A\",2,\"Medium\",\"Science\",\"{subName}\",\"{topicOptics}\"",
+            $"\"Thermo Q1 {uniqueSuffix}\",\"MCQ\",\"Energy conservation\",\"Entropy\",\"Zero Kelvin\",\"Pressure\",\"A\",3,\"Medium\",\"Science\",\"{subName}\",\"{topicThermo}\"",
+            $"\"Thermo Q2 {uniqueSuffix}\",\"MCQ\",\"Entropy increases\",\"Force equals ma\",\"Constant volume\",\"Ideal gas\",\"A\",3,\"Medium\",\"Science\",\"{subName}\",\"{topicThermo}\"",
+            $"\"Thermo Q3 {uniqueSuffix}\",\"MCQ\",\"Isochoric\",\"Adiabatic\",\"Isobaric\",\"Isothermal\",\"B\",3,\"Hard\",\"Science\",\"{subName}\",\"{topicThermo}\""
+        );
+
+        using (var bankForm = new MultipartFormDataContent())
+        {
+            bankForm.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(bankCsv)), "file", "bank_physics.csv");
+            var seedResp = await teacherClient.PostAsync("/api/v1/questions/import/csv?skipInvalidRows=false&defaultStatus=4", bankForm);
+            seedResp.EnsureSuccessStatusCode();
+            var seedDoc = await seedResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(7, seedDoc.GetProperty("importedCount").GetInt32());
+        }
+
+        // Auto-generate sections randomly by Subject and Topic
+        var autoGenResp = await teacherClient.PostAsJsonAsync("/api/v1/exams/auto-generate-questions", new
+        {
+            onlyPublished = true,
+            allowPartial = false,
+            rules = new object[]
+            {
+                new { sectionTitle = "Optics Section", subject = subName, topic = topicOptics, count = 2 },
+                new { sectionTitle = "Thermo Section", subject = subName, topic = topicThermo, count = 2 }
+            }
+        });
+        autoGenResp.EnsureSuccessStatusCode();
+        var autoGenDoc = await autoGenResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(autoGenDoc.GetProperty("success").GetBoolean());
+        Assert.Equal(4, autoGenDoc.GetProperty("totalQuestions").GetInt32());
+        Assert.Equal(10.0, autoGenDoc.GetProperty("totalMarks").GetDouble()); // 2*2 + 2*3 = 10
+
+        var genSections = autoGenDoc.GetProperty("sections");
+        Assert.Equal(2, genSections.GetArrayLength());
+        Assert.Equal(2, genSections[0].GetProperty("selectedCount").GetInt32());
+        Assert.Equal(2, genSections[1].GetProperty("selectedCount").GetInt32());
+
+        var selectedIds = genSections[0].GetProperty("questionIds").EnumerateArray().Select(x => x.GetString()!)
+            .Concat(genSections[1].GetProperty("questionIds").EnumerateArray().Select(x => x.GetString()!))
+            .ToList();
+        Assert.Equal(4, selectedIds.Distinct().Count());
+        Assert.DoesNotContain(q1Id, selectedIds);
+        Assert.DoesNotContain(q2Id, selectedIds);
+
+        // Requesting more questions than available with allowPartial=false returns 400 BadRequest
+        var overflowResp = await teacherClient.PostAsJsonAsync("/api/v1/exams/auto-generate-questions", new
+        {
+            onlyPublished = true,
+            allowPartial = false,
+            rules = new object[]
+            {
+                new { sectionTitle = "Too Many", subject = subName, topic = topicOptics, count = 20 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, overflowResp.StatusCode);
+
+        // Auto-create complete exam directly from Subject/Topic counts (Subject+Topic + Topic-only rule)
+        var autoCreateResp = await teacherClient.PostAsJsonAsync("/api/v1/exams/auto-create", new
+        {
+            title = $"Auto Physics Exam {uniqueSuffix}",
+            description = "Generated from Subject and Topic rules",
+            durationMinutes = 45,
+            type = 0, // MCQ
+            status = 3, // Active
+            onlyPublished = true,
+            allowPartial = false,
+            rules = new object[]
+            {
+                new { sectionTitle = "Optics Random", subject = subName, count = 3 },
+                new { sectionTitle = "Thermo Random", topic = topicThermo, count = 2 }
+            }
+        });
+        autoCreateResp.EnsureSuccessStatusCode();
+        var autoCreateDoc = await autoCreateResp.Content.ReadFromJsonAsync<JsonElement>();
+        var createdExam = autoCreateDoc.GetProperty("exam");
+        var autoExamId = createdExam.GetProperty("examId").GetString()!;
+        Assert.Equal(5, createdExam.GetProperty("questionCount").GetInt32());
+        Assert.Equal(2, createdExam.GetProperty("sectionCount").GetInt32());
+
+        var autoExamQs = await teacherClient.GetFromJsonAsync<JsonElement>($"/api/v1/exams/{autoExamId}/questions");
+        Assert.Equal(5, autoExamQs.GetProperty("questionIds").GetArrayLength());
+        var autoQsList = autoExamQs.GetProperty("questions").EnumerateArray().ToList();
+        Assert.Equal(5, autoQsList.Select(q => q.GetProperty("id").GetString()).Distinct().Count());
+        Assert.All(autoQsList, q => Assert.False(q.GetProperty("isExamExclusive").GetBoolean()));
+    }
 }

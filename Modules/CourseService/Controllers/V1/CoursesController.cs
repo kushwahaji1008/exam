@@ -13,13 +13,16 @@ namespace CourseService.Controllers.V1
     {
         private readonly CourseManagementService _courseService;
         private readonly ICourseEnrollmentLookup? _enrollmentLookup;
+        private readonly ICourseMediaSigner? _mediaSigner;
 
         public CoursesController(
             CourseManagementService courseService,
-            ICourseEnrollmentLookup? enrollmentLookup = null)
+            ICourseEnrollmentLookup? enrollmentLookup = null,
+            ICourseMediaSigner? mediaSigner = null)
         {
             _courseService = courseService;
             _enrollmentLookup = enrollmentLookup;
+            _mediaSigner = mediaSigner;
         }
 
         private string? GetCurrentUserId() => User.FindFirst("userId")?.Value;
@@ -51,7 +54,107 @@ namespace CourseService.Controllers.V1
         public async Task<IActionResult> GetCourseById(string courseId)
         {
             var course = await _courseService.GetCourseByIdAsync(courseId);
-            return course == null ? NotFound() : Ok(course);
+            if (course == null) return NotFound();
+
+            var userId = GetCurrentUserId();
+            var role = GetCurrentUserRole();
+            bool hasCourseAccess = false;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+                               course.CreatedBy == userId ||
+                               course.InstructorIds.Contains(userId);
+                hasCourseAccess = isStaff ||
+                                  course.CoursePrice == 0 ||
+                                  (_enrollmentLookup != null && await _enrollmentLookup.IsUserEnrolledAsync(userId, courseId));
+            }
+
+            // Redact protected ContentUrl values for unauthorized visitors so media cannot be scraped directly.
+            var safeSections = course.Sections.Select(s => new CourseSection
+            {
+                Id = s.Id,
+                Title = s.Title,
+                OrderIndex = s.OrderIndex,
+                Items = s.Items.Select(i => new CurriculumItem
+                {
+                    Id = i.Id,
+                    Title = i.Title,
+                    Type = i.Type,
+                    ContentUrl = (hasCourseAccess || (!string.IsNullOrEmpty(userId) && i.IsFreePreview)) ? i.ContentUrl : string.Empty,
+                    OrderIndex = i.OrderIndex,
+                    IsFreePreview = i.IsFreePreview,
+                    DurationSeconds = i.DurationSeconds
+                }).ToList()
+            }).ToList();
+
+            return Ok(new Course
+            {
+                Id = course.Id,
+                CourseId = course.CourseId,
+                Title = course.Title,
+                Description = course.Description,
+                ThumbnailUrl = course.ThumbnailUrl,
+                Status = course.Status,
+                Level = course.Level,
+                CoursePrice = course.CoursePrice,
+                DiscountCoursePrice = course.DiscountCoursePrice,
+                EnrollmentCount = course.EnrollmentCount,
+                CreatedBy = course.CreatedBy,
+                InstructorIds = course.InstructorIds,
+                CreatedAt = course.CreatedAt,
+                UpdatedAt = course.UpdatedAt,
+                Sections = safeSections
+            });
+        }
+
+        [HttpPost("{courseId}/items/{itemId}/media-access")]
+        [Authorize]
+        public async Task<IActionResult> GetItemMediaAccess(string courseId, string itemId)
+        {
+            var userId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var course = await _courseService.GetCourseByIdAsync(courseId);
+            if (course == null) return NotFound(new { message = "Course not found." });
+
+            var item = course.Sections.SelectMany(s => s.Items).FirstOrDefault(i => i.Id == itemId);
+            if (item == null) return NotFound(new { message = "Curriculum item not found." });
+
+            var role = GetCurrentUserRole();
+            bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+                           course.CreatedBy == userId ||
+                           course.InstructorIds.Contains(userId);
+            bool hasAccess = isStaff ||
+                             item.IsFreePreview ||
+                             course.CoursePrice == 0 ||
+                             (_enrollmentLookup != null && await _enrollmentLookup.IsUserEnrolledAsync(userId, courseId));
+
+            if (!hasAccess)
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Enroll in this course to open this material on the platform." });
+
+            if (string.IsNullOrWhiteSpace(item.ContentUrl))
+                return NotFound(new { message = "No media content is attached to this item." });
+
+            bool isLocal = _mediaSigner?.IsLocalPlatformMedia(item.ContentUrl)
+                ?? item.ContentUrl.StartsWith("/api/v1/files/download/", StringComparison.OrdinalIgnoreCase);
+            string streamUrl = _mediaSigner != null
+                ? _mediaSigner.SignMediaUrl(item.ContentUrl, userId)
+                : item.ContentUrl;
+
+            var identityLabel = User.FindFirst(ClaimTypes.Email)?.Value
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? userId;
+
+            return Ok(new
+            {
+                streamUrl,
+                isLocalHosted = isLocal,
+                itemType = item.Type,
+                title = item.Title,
+                durationSeconds = item.DurationSeconds,
+                watermarkText = $"{identityLabel} · ID:{userId}",
+                expiresAt = DateTime.UtcNow.AddMinutes(15)
+            });
         }
 
         [HttpPatch("{courseId}")]

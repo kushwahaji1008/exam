@@ -43,7 +43,9 @@ namespace QuestionBankService.Models
         public string? ParentQuestionId { get; set; } // Used if this is a duplicated question
         public List<ReviewLog> ReviewHistory { get; set; } = new();
 
-        // Audit
+        // Audit & Scope
+        public bool IsExamExclusive { get; set; } = false;
+        public string? ExclusiveExamId { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? UpdatedBy { get; set; }
@@ -238,6 +240,8 @@ namespace QuestionBankService.Models
         
         public QuestionStatus Status { get; set; }
         public int Version { get; set; }
+        public bool IsExamExclusive { get; set; }
+        public string? ExclusiveExamId { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 
@@ -247,6 +251,55 @@ namespace QuestionBankService.Models
         public List<string> CorrectOptions { get; set; } = new();
         public string? Explanation { get; set; }
         public List<ReviewLog> ReviewHistory { get; set; } = new();
+    }
+
+    public class CsvImportErrorDto
+    {
+        public int RowNumber { get; set; }
+        public string QuestionPreview { get; set; } = string.Empty;
+        public string Error { get; set; } = string.Empty;
+    }
+
+    public class BulkQuestionImportResult
+    {
+        public string Message { get; set; } = string.Empty;
+        public bool DryRun { get; set; }
+        public int TotalRows { get; set; }
+        public int ImportedCount { get; set; }
+        public int FailedCount { get; set; }
+        public List<CsvImportErrorDto> Errors { get; set; } = new();
+        public List<QuestionDto> Questions { get; set; } = new();
+    }
+
+    public class ExamCsvSectionQuestions
+    {
+        public string SectionTitle { get; set; } = string.Empty;
+        public List<Question> Questions { get; set; } = new();
+    }
+
+    public class RandomBankQuestionRule
+    {
+        public string? SectionTitle { get; set; }
+        public string? Category { get; set; }
+        public string? Subject { get; set; }
+        public string? Topic { get; set; }
+        public string? Difficulty { get; set; }
+        public int? QuestionType { get; set; }
+        public int Count { get; set; } = 5;
+    }
+
+    public class RandomSelectionSectionResult
+    {
+        public string SectionTitle { get; set; } = string.Empty;
+        public int RequestedCount { get; set; }
+        public List<Question> Questions { get; set; } = new();
+    }
+
+    public class RandomSelectionResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public List<RandomSelectionSectionResult> Sections { get; set; } = new();
     }
 
     #endregion

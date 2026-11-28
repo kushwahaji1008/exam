@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using CourseService.Models.V1;
@@ -12,10 +13,14 @@ namespace CourseService.Controllers.V1
     public class CourseCurriculumController : ControllerBase
     {
         private readonly CourseManagementService _courseService;
+        private readonly ICourseEnrollmentLookup? _enrollmentLookup;
 
-        public CourseCurriculumController(CourseManagementService courseService)
+        public CourseCurriculumController(
+            CourseManagementService courseService,
+            ICourseEnrollmentLookup? enrollmentLookup = null)
         {
             _courseService = courseService;
+            _enrollmentLookup = enrollmentLookup;
         }
 
         [HttpGet]
@@ -24,7 +29,33 @@ namespace CourseService.Controllers.V1
         {
             var course = await _courseService.GetCourseByIdAsync(courseId);
             var section = course?.Sections.FirstOrDefault(s => s.Id == sectionId);
-            return section != null ? Ok(section.Items.OrderBy(i => i.OrderIndex)) : NotFound();
+            if (course == null || section == null) return NotFound();
+
+            var userId = User.FindFirst("userId")?.Value;
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            bool hasAccess = false;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                bool isStaff = role is "Teacher" or "Admin" or "SuperAdmin" ||
+                               course.CreatedBy == userId ||
+                               course.InstructorIds.Contains(userId);
+                hasAccess = isStaff ||
+                            course.CoursePrice == 0 ||
+                            (_enrollmentLookup != null && await _enrollmentLookup.IsUserEnrolledAsync(userId, courseId));
+            }
+
+            var items = section.Items.OrderBy(i => i.OrderIndex).Select(i => new CurriculumItem
+            {
+                Id = i.Id,
+                Title = i.Title,
+                Type = i.Type,
+                ContentUrl = (hasAccess || (!string.IsNullOrEmpty(userId) && i.IsFreePreview)) ? i.ContentUrl : string.Empty,
+                OrderIndex = i.OrderIndex,
+                IsFreePreview = i.IsFreePreview,
+                DurationSeconds = i.DurationSeconds
+            });
+
+            return Ok(items);
         }
 
         [HttpPost]

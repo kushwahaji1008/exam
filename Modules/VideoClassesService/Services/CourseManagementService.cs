@@ -5,6 +5,12 @@ using VideoClassesService.Models;
 
 namespace VideoClassesService.Services
 {
+    public interface IVideoMediaSigner
+    {
+        string SignMediaUrl(string rawUrl, string userId);
+        bool IsLocalPlatformMedia(string rawUrl);
+    }
+
     public class CourseManagementService
     {
         private readonly MongoDbService _mongoDb;

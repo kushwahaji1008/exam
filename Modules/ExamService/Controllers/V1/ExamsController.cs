@@ -300,5 +300,97 @@ namespace ExamService.Controllers.V1
             var exams = await _examService.GetActiveExamsAsync();
             return Ok(exams.Select(ExamManagementService.ToExamDto));
         }
+
+        // ==========================================
+        // EXAM-ONLY SECTION CSV & RANDOM AUTO-GENERATION
+        // ==========================================
+
+        private const long MaxExamCsvBytes = 10 * 1024 * 1024; // 10 MB
+
+        [HttpGet("import-questions-template")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public IActionResult DownloadExamSectionCsvTemplate()
+        {
+            var (bytes, contentType, fileName) = _examService.GetExamSectionCsvTemplate();
+            return File(bytes, contentType, fileName);
+        }
+
+        [HttpPost("import-questions-csv")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(MaxExamCsvBytes)]
+        public async Task<IActionResult> ImportExamQuestionsCsv(
+            IFormFile? file,
+            [FromQuery] string? examId = null,
+            [FromQuery] string? targetSectionTitle = null,
+            [FromQuery] bool dryRun = false,
+            [FromQuery] bool skipInvalidRows = true,
+            [FromQuery] bool attachToExam = false)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Please upload a non-empty CSV file." });
+
+            if (file.Length > MaxExamCsvBytes)
+                return BadRequest(new { message = "CSV file exceeds the 10 MB upload limit." });
+
+            if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Only .csv files are supported." });
+
+            string csvContent;
+            using (var stream = file.OpenReadStream())
+            using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                csvContent = await reader.ReadToEndAsync();
+            }
+
+            if (csvContent.Contains('\0'))
+                return BadRequest(new { message = "Invalid CSV file: binary content detected." });
+
+            var result = await _examService.ImportExamCsvAsync(
+                csvContent,
+                GetCurrentUserId() ?? "SYSTEM",
+                examId,
+                targetSectionTitle,
+                dryRun,
+                skipInvalidRows,
+                attachToExam);
+
+            if (result.TotalRows == 0 && result.Errors.Count == 0)
+                return BadRequest(result);
+
+            if (!dryRun && ((!skipInvalidRows && result.Errors.Count > 0) || (result.ImportedCount == 0 && result.FailedCount > 0)))
+                return BadRequest(result);
+
+            return Ok(result);
+        }
+
+        [HttpPost("auto-generate-questions")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> AutoGenerateExamQuestions([FromBody] AutoGenerateExamQuestionsRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var result = await _examService.AutoGenerateQuestionsAsync(request);
+            if (!result.Success)
+                return BadRequest(new { message = result.Message, result });
+
+            return Ok(result);
+        }
+
+        [HttpPost("auto-create")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public async Task<IActionResult> AutoCreateExam([FromBody] AutoCreateExamRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var (success, message, exam, generation) = await _examService.AutoCreateExamAsync(request, GetCurrentUserId() ?? "SYSTEM");
+            if (!success || exam == null)
+                return BadRequest(new { message, generation });
+
+            return Ok(new
+            {
+                message,
+                exam = ExamManagementService.ToExamDto(exam),
+                generation
+            });
+        }
     }
 }

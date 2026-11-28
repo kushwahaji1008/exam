@@ -14,15 +14,38 @@ namespace ExamService.Services
         Task<QuestionAnalysisDto> GetQuestionAnalysisAsync(Exam exam);
     }
 
+    public interface IExamQuestionAutomation
+    {
+        Task<ExamCsvImportResponse> ImportExamCsvAsync(
+            string csvContent,
+            string createdBy,
+            string? examId,
+            string? targetSectionTitle,
+            bool dryRun,
+            bool skipInvalidRows);
+
+        Task<AutoGenerateExamQuestionsResponse> SelectRandomBankQuestionsAsync(
+            AutoGenerateExamQuestionsRequest request);
+
+        Task BindExclusiveQuestionsAsync(IEnumerable<string> questionIds, string examId);
+
+        (byte[] Bytes, string ContentType, string FileName) GenerateExamSectionCsvTemplate();
+    }
+
     public class ExamManagementService
     {
         private readonly MongoDbService _mongoDb;
         private readonly IExamAnalyticsProvider? _analyticsProvider;
+        private readonly IExamQuestionAutomation? _questionAutomation;
 
-        public ExamManagementService(MongoDbService mongoDb, IExamAnalyticsProvider? analyticsProvider = null)
+        public ExamManagementService(
+            MongoDbService mongoDb,
+            IExamAnalyticsProvider? analyticsProvider = null,
+            IExamQuestionAutomation? questionAutomation = null)
         {
             _mongoDb = mongoDb;
             _analyticsProvider = analyticsProvider;
+            _questionAutomation = questionAutomation;
         }
 
         private async Task<string> GenerateUniqueExamIdAsync()
@@ -40,6 +63,17 @@ namespace ExamService.Services
 
         public async Task<Exam> CreateExamAsync(CreateExamRequest request, string userId)
         {
+            var normalizedSections = (request.Sections ?? new List<ExamSection>())
+                .Select((s, idx) => new ExamSection
+                {
+                    Id = string.IsNullOrWhiteSpace(s.Id) ? Guid.NewGuid().ToString() : s.Id,
+                    Title = string.IsNullOrWhiteSpace(s.Title) ? $"Section {idx + 1}" : s.Title.Trim(),
+                    Description = s.Description ?? string.Empty,
+                    OrderIndex = idx,
+                    QuestionIds = (s.QuestionIds ?? new List<string>()).Where(q => !string.IsNullOrWhiteSpace(q)).Distinct().ToList()
+                })
+                .ToList();
+
             var exam = new Exam
             {
                 ExamId = await GenerateUniqueExamIdAsync(),
@@ -50,7 +84,8 @@ namespace ExamService.Services
                 ScheduledStartTime = request.ScheduledStartTime,
                 ScheduledEndTime = request.ScheduledEndTime,
                 Type = request.Type,
-                QuestionIds = request.QuestionIds ?? new List<string>(),
+                QuestionIds = (request.QuestionIds ?? new List<string>()).Where(q => !string.IsNullOrWhiteSpace(q)).Distinct().ToList(),
+                Sections = normalizedSections,
                 Settings = request.Settings ?? new ExamSettings(),
                 Grading = request.Grading ?? new ExamGrading(),
                 TotalMarks = request.TotalMarks,
@@ -65,6 +100,7 @@ namespace ExamService.Services
             };
 
             await _mongoDb.Exams.InsertOneAsync(exam);
+            await BindExamExclusiveQuestionsAsync(exam);
             return exam;
         }
 
@@ -117,7 +153,142 @@ namespace ExamService.Services
             updatedExam.UpdatedAt = DateTime.UtcNow;
 
             var result = await _mongoDb.Exams.ReplaceOneAsync(e => e.Id == existing.Id, updatedExam);
-            return result.MatchedCount > 0;
+            if (result.MatchedCount > 0)
+            {
+                await BindExamExclusiveQuestionsAsync(updatedExam);
+                return true;
+            }
+            return false;
+        }
+
+        private async Task BindExamExclusiveQuestionsAsync(Exam exam)
+        {
+            if (_questionAutomation == null) return;
+            var allIds = exam.QuestionIds
+                .Concat(exam.Sections.SelectMany(s => s.QuestionIds))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+            if (allIds.Count > 0)
+                await _questionAutomation.BindExclusiveQuestionsAsync(allIds, exam.ExamId);
+        }
+
+        public (byte[] Bytes, string ContentType, string FileName) GetExamSectionCsvTemplate()
+        {
+            if (_questionAutomation == null)
+                throw new InvalidOperationException("Question bank automation service is not configured.");
+            return _questionAutomation.GenerateExamSectionCsvTemplate();
+        }
+
+        public async Task<ExamCsvImportResponse> ImportExamCsvAsync(
+            string csvContent,
+            string createdBy,
+            string? examId,
+            string? targetSectionTitle,
+            bool dryRun,
+            bool skipInvalidRows,
+            bool attachToExam)
+        {
+            if (_questionAutomation == null)
+                throw new InvalidOperationException("Question bank automation service is not configured.");
+
+            var result = await _questionAutomation.ImportExamCsvAsync(
+                csvContent,
+                createdBy,
+                examId,
+                targetSectionTitle,
+                dryRun,
+                skipInvalidRows);
+
+            if (attachToExam && !dryRun && !string.IsNullOrWhiteSpace(examId) && result.Sections.Count > 0)
+            {
+                var exam = await GetExamByIdAsync(examId);
+                if (exam != null)
+                {
+                    foreach (var importedSec in result.Sections)
+                    {
+                        var existingSec = exam.Sections.FirstOrDefault(s =>
+                            s.Title.Trim().Equals(importedSec.SectionTitle.Trim(), StringComparison.OrdinalIgnoreCase));
+                        if (existingSec == null)
+                        {
+                            existingSec = new ExamSection
+                            {
+                                Title = importedSec.SectionTitle.Trim(),
+                                OrderIndex = exam.Sections.Count,
+                                QuestionIds = new List<string>()
+                            };
+                            exam.Sections.Add(existingSec);
+                        }
+
+                        foreach (var qId in importedSec.QuestionIds)
+                        {
+                            if (!existingSec.QuestionIds.Contains(qId))
+                                existingSec.QuestionIds.Add(qId);
+                        }
+                    }
+
+                    if (exam.TotalMarks <= 0)
+                        exam.TotalMarks = Math.Max(1, (int)Math.Round(result.Sections.Sum(s => s.TotalMarks)));
+
+                    exam.UpdatedAt = DateTime.UtcNow;
+                    await _mongoDb.Exams.ReplaceOneAsync(e => e.Id == exam.Id, exam);
+                    await BindExamExclusiveQuestionsAsync(exam);
+                }
+            }
+
+            return result;
+        }
+
+        public async Task<AutoGenerateExamQuestionsResponse> AutoGenerateQuestionsAsync(AutoGenerateExamQuestionsRequest request)
+        {
+            if (_questionAutomation == null)
+                throw new InvalidOperationException("Question bank automation service is not configured.");
+
+            return await _questionAutomation.SelectRandomBankQuestionsAsync(request);
+        }
+
+        public async Task<(bool Success, string Message, Exam? Exam, AutoGenerateExamQuestionsResponse Generation)> AutoCreateExamAsync(
+            AutoCreateExamRequest request,
+            string createdBy)
+        {
+            var generation = await AutoGenerateQuestionsAsync(request);
+            if (!generation.Success || generation.TotalQuestions == 0)
+                return (false, generation.Message, null, generation);
+
+            var sections = generation.Sections.Select((sec, idx) => new ExamSection
+            {
+                Title = string.IsNullOrWhiteSpace(sec.SectionTitle) ? $"Section {idx + 1}" : sec.SectionTitle,
+                OrderIndex = idx,
+                QuestionIds = sec.QuestionIds.ToList()
+            }).ToList();
+
+            int totalMarks = Math.Max(1, (int)Math.Round(generation.TotalMarks));
+            int passingMarks = request.PassingMarks ?? Math.Max(1, (int)Math.Ceiling(totalMarks * 0.4));
+
+            var exam = new Exam
+            {
+                ExamId = await GenerateUniqueExamIdAsync(),
+                CourseId = request.CourseId ?? string.Empty,
+                Title = request.Title.Trim(),
+                Description = request.Description ?? string.Empty,
+                DurationMinutes = Math.Max(1, request.DurationMinutes),
+                Type = request.Type,
+                Status = request.Status,
+                Sections = sections,
+                QuestionIds = new List<string>(),
+                Settings = request.Settings ?? new ExamSettings(),
+                Grading = request.Grading ?? new ExamGrading(),
+                TotalMarks = totalMarks,
+                PassingMarks = Math.Min(passingMarks, totalMarks),
+                InstructionsHtml = request.InstructionsHtml,
+                CreatedBy = createdBy,
+                CreatedAt = DateTime.UtcNow,
+                Version = "1.0",
+                IsLatestVersion = true
+            };
+
+            await _mongoDb.Exams.InsertOneAsync(exam);
+            return (true, $"Exam '{exam.Title}' created automatically with {generation.TotalQuestions} random question(s).", exam, generation);
         }
 
         public async Task<bool> PatchExamAsync(string examId, object patchData)

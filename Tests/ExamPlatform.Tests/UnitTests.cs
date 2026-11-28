@@ -1,10 +1,13 @@
 using System.Text;
 using AnalyticsService.Services;
 using AuthService.Services;
+using Microsoft.Extensions.Configuration;
 using ProctoringService.Models;
 using ProctoringService.Services;
+using QuestionBankService.Services;
 using ResultService.Models;
 using ResultService.Services;
+using StorageService.Services;
 
 namespace ExamPlatform.Tests;
 
@@ -147,5 +150,92 @@ public class UnitTests
         var analyticsText = Encoding.ASCII.GetString(analyticsPdf);
         Assert.StartsWith("%PDF-1.4", analyticsText);
         Assert.Contains("%%EOF", analyticsText);
+    }
+
+    [Fact]
+    public void QuestionService_ParseCsvRecords_HandlesBomEscapedQuotesAndMultilineFields()
+    {
+        const string csv = "\uFEFFQuestionText,Type,CodeSnippet\r\n" +
+                           "\"What is \"\"Big-O\"\", really?\",CodeEvaluation,\"int f() {\n  return 1, 2;\n}\"\r\n\r\n" +
+                           "Simple Q,Subjective,";
+
+        var rows = QuestionService.ParseCsvRecords(csv);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal("QuestionText", rows[0][0]);
+        Assert.Equal("What is \"Big-O\", really?", rows[1][0]);
+        Assert.Equal("CodeEvaluation", rows[1][1]);
+        Assert.Equal("int f() {\n  return 1, 2;\n}", rows[1][2]);
+        Assert.Equal("Simple Q", rows[2][0]);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            QuestionService.ParseCsvRecords("QuestionText\n\"unterminated"));
+    }
+
+    [Fact]
+    public void QuestionService_GenerateCsvTemplate_IsParseableAndContainsAllSamples()
+    {
+        var (bytes, contentType, fileName) = QuestionService.GenerateCsvTemplate();
+        Assert.Contains("text/csv", contentType);
+        Assert.Equal("questions_import_template.csv", fileName);
+
+        var text = Encoding.UTF8.GetString(bytes);
+        var records = QuestionService.ParseCsvRecords(text);
+        Assert.True(records.Count >= 6); // Header + 5 sample question types
+        Assert.Equal("QuestionText", records[0][0]);
+        Assert.Contains("Category", records[0]);
+        Assert.Contains("Subject", records[0]);
+        Assert.Contains("Topic", records[0]);
+        Assert.DoesNotContain("Tags", records[0]);
+        Assert.Contains(records.Skip(1), r => r[1] == "MCQ");
+        Assert.Contains(records.Skip(1), r => r[1] == "MultipleCorrect");
+        Assert.Contains(records.Skip(1), r => r[1] == "TrueFalse");
+    }
+
+    [Fact]
+    public void MediaTicketService_SignsAndVerifiesTicketsPerFileAndExpiry()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Key"] = "SuperSecretUnitTestKey_1234567890!" })
+            .Build();
+
+        var service = new MediaTicketService(config);
+        var rawUrl = "/api/v1/files/download/course-videos/lecture1.mp4";
+        var signed = service.CreateSignedStreamUrl(rawUrl, "user-42", TimeSpan.FromMinutes(10));
+
+        Assert.Contains("?ticket=", signed);
+        var ticket = Uri.UnescapeDataString(signed.Split("?ticket=")[1]);
+
+        Assert.True(service.ValidateTicket(ticket, "course-videos", "lecture1.mp4", out var userId));
+        Assert.Equal("user-42", userId);
+
+        // Cannot reuse ticket on a different folder or file
+        Assert.False(service.ValidateTicket(ticket, "course-materials", "lecture1.mp4", out _));
+        Assert.False(service.ValidateTicket(ticket, "course-videos", "other.mp4", out _));
+        Assert.False(service.ValidateTicket(ticket + "tamper", "course-videos", "lecture1.mp4", out _));
+
+        // Expired ticket must be rejected
+        var expired = service.CreateSignedStreamUrl(rawUrl, "user-42", TimeSpan.FromSeconds(-5));
+        var expiredTicket = Uri.UnescapeDataString(expired.Split("?ticket=")[1]);
+        Assert.False(service.ValidateTicket(expiredTicket, "course-videos", "lecture1.mp4", out _));
+    }
+
+    [Fact]
+    public void QuestionService_GenerateExamSectionCsvTemplate_ContainsSectionColumnAndSamples()
+    {
+        var (bytes, contentType, fileName) = QuestionService.GenerateExamSectionCsvTemplate();
+        Assert.Equal("text/csv; charset=utf-8", contentType);
+        Assert.Equal("exam_section_questions_template.csv", fileName);
+        Assert.True(bytes.Length > 3);
+
+        var text = Encoding.UTF8.GetString(bytes);
+        var records = QuestionService.ParseCsvRecords(text);
+        Assert.True(records.Count >= 5); // Header + 4 section sample rows
+        Assert.Equal("Section", records[0][0]);
+        Assert.Equal("QuestionText", records[0][1]);
+        Assert.DoesNotContain("Tags", records[0]);
+        Assert.Contains(records.Skip(1), r => r[0] == "Section A - Core Concepts" && r[2] == "MCQ");
+        Assert.Contains(records.Skip(1), r => r[0] == "Section A - Core Concepts" && r[2] == "MultipleCorrect");
+        Assert.Contains(records.Skip(1), r => r[0] == "Section B - Aptitude & Code" && r[2] == "TrueFalse");
+        Assert.Contains(records.Skip(1), r => r[0] == "Section B - Aptitude & Code" && r[2] == "CodeEvaluation");
     }
 }

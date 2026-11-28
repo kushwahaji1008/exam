@@ -7,7 +7,7 @@ namespace StorageService.Services
     {
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".jpg", ".jpeg", ".png", ".webp", ".pdf"
+            ".jpg", ".jpeg", ".png", ".webp", ".pdf", ".mp4", ".webm", ".mov", ".m4v"
         };
 
         private readonly string _rootPath;
@@ -109,6 +109,9 @@ namespace StorageService.Services
                 ".png" => "image/png",
                 ".webp" => "image/webp",
                 ".pdf" => "application/pdf",
+                ".mp4" or ".m4v" => "video/mp4",
+                ".webm" => "video/webm",
+                ".mov" => "video/quicktime",
                 _ => "application/octet-stream"
             };
 

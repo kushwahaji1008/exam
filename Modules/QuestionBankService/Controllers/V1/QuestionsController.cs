@@ -236,6 +236,10 @@ namespace QuestionBankService.Controllers.V1
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateCategory([FromBody] Category request)
         {
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { message = "Category name is required." });
+
+            request.Name = request.Name.Trim();
             var category = await _questionService.CreateCategoryAsync(request);
             return Ok(new { message = "Category created", category });
         }
@@ -270,12 +274,17 @@ namespace QuestionBankService.Controllers.V1
 
         [HttpGet("~/api/v{version:apiVersion}/subjects")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetSubjects() => Ok(await _questionService.GetSubjectsAsync());
+        public async Task<IActionResult> GetSubjects([FromQuery] string? categoryId = null) =>
+            Ok(await _questionService.GetSubjectsAsync(categoryId));
 
         [HttpPost("~/api/v{version:apiVersion}/subjects")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateSubject([FromBody] Subject request)
         {
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { message = "Subject name is required." });
+
+            request.Name = request.Name.Trim();
             var subject = await _questionService.CreateSubjectAsync(request);
             return Ok(new { message = "Subject created", subject });
         }
@@ -310,12 +319,17 @@ namespace QuestionBankService.Controllers.V1
 
         [HttpGet("~/api/v{version:apiVersion}/topics")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
-        public async Task<IActionResult> GetTopics() => Ok(await _questionService.GetTopicsAsync());
+        public async Task<IActionResult> GetTopics([FromQuery] string? subjectId = null) =>
+            Ok(await _questionService.GetTopicsAsync(subjectId));
 
         [HttpPost("~/api/v{version:apiVersion}/topics")]
         [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
         public async Task<IActionResult> CreateTopic([FromBody] Topic request)
         {
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { message = "Topic name is required." });
+
+            request.Name = request.Name.Trim();
             var topic = await _questionService.CreateTopicAsync(request);
             return Ok(new { message = "Topic created", topic });
         }
@@ -425,6 +439,68 @@ namespace QuestionBankService.Controllers.V1
                 return Ok(questions.Select(QuestionService.ToQuestionWithAnswer).ToList());
 
             return Ok(questions.Select(QuestionService.ToQuestionDto).ToList());
+        }
+
+        private const long MaxCsvUploadBytes = 10 * 1024 * 1024; // 10 MB
+
+        [HttpGet("~/api/v{version:apiVersion}/questions/import/template")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        public IActionResult DownloadCsvTemplate()
+        {
+            var (bytes, contentType, fileName) = QuestionService.GenerateCsvTemplate();
+            return File(bytes, contentType, fileName);
+        }
+
+        [HttpPost("~/api/v{version:apiVersion}/questions/import/csv")]
+        [Authorize(Roles = "Teacher,Admin,SuperAdmin")]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(MaxCsvUploadBytes)]
+        public async Task<IActionResult> ImportQuestionsCsv(
+            IFormFile? file,
+            [FromQuery] bool dryRun = false,
+            [FromQuery] bool skipInvalidRows = true,
+            [FromQuery] string? defaultCategoryId = null,
+            [FromQuery] string? defaultSubjectId = null,
+            [FromQuery] string? defaultTopicId = null,
+            [FromQuery] QuestionStatus? defaultStatus = null)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "Please upload a non-empty CSV file." });
+
+            if (file.Length > MaxCsvUploadBytes)
+                return BadRequest(new { message = "CSV file exceeds the 10 MB upload limit." });
+
+            var ext = Path.GetExtension(file.FileName);
+            if (!string.Equals(ext, ".csv", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Only .csv files are supported." });
+
+            string csvContent;
+            using (var stream = file.OpenReadStream())
+            using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                csvContent = await reader.ReadToEndAsync();
+            }
+
+            if (csvContent.Contains('\0'))
+                return BadRequest(new { message = "Invalid CSV file: binary content detected." });
+
+            var result = await _questionService.ImportQuestionsFromCsvAsync(
+                csvContent,
+                GetUserId() ?? "SYSTEM",
+                dryRun,
+                skipInvalidRows,
+                defaultCategoryId,
+                defaultSubjectId,
+                defaultTopicId,
+                defaultStatus);
+
+            if (result.TotalRows == 0 && result.Errors.Count == 0)
+                return BadRequest(result);
+
+            if (!dryRun && ((!skipInvalidRows && result.Errors.Count > 0) || (result.ImportedCount == 0 && result.FailedCount > 0)))
+                return BadRequest(result);
+
+            return Ok(result);
         }
 
         [HttpPost("~/api/v{version:apiVersion}/questions/import")]
